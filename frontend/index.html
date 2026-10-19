@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PaperSense — Intelligent Research Paper Analysis</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">📄 PaperSense</div>
+    <nav class="nav-links">
+      <a href="#" class="nav-link active" data-page="search">Search</a>
+      <a href="#" class="nav-link" data-page="upload">Upload</a>
+      <a href="#" class="nav-link" data-page="papers">My Papers</a>
+      <a href="#" class="nav-link" data-page="reports">Reports</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <!-- Search Page -->
+    <section id="page-search" class="page active">
+      <div class="hero">
+        <h1>Ask a research question.</h1>
+        <p class="subtitle">
+          PaperSense searches academic sources, reads the papers, and gives you
+          a grounded, cited answer — not just a list of links.
+        </p>
+
+        <form id="search-form" class="search-box">
+          <input
+            type="text"
+            id="query-input"
+            placeholder="e.g. Analyze recent research on ML-based phishing detection"
+            autocomplete="off"
+            required
+          />
+          <button type="submit" id="search-btn">Search</button>
+        </form>
+
+        <div class="search-filters">
+          <label>
+            <input type="checkbox" id="open-access-filter"> Open Access Only
+          </label>
+          <select id="sort-select">
+            <option value="relevance">Sort by Relevance</option>
+            <option value="year">Sort by Year</option>
+            <option value="citations">Sort by Citations</option>
+          </select>
+        </div>
+
+        <p id="status-line" class="status-line"></p>
+      </div>
+
+      <section id="results" class="results-grid"></section>
+    </section>
+
+    <!-- Upload Page -->
+    <section id="page-upload" class="page">
+      <div class="hero">
+        <h1>Upload Research Papers</h1>
+        <p class="subtitle">
+          Upload PDF research papers for analysis, comparison, and literature review generation.
+        </p>
+      </div>
+
+      <div class="upload-section">
+        <form id="upload-form" class="upload-box">
+          <input type="file" id="pdf-file" accept=".pdf" required />
+          <button type="submit" id="upload-btn">Upload PDF</button>
+        </form>
+        <p id="upload-status" class="status-line"></p>
+      </div>
+
+      <section id="upload-results" class="results-grid"></section>
+    </section>
+
+    <!-- My Papers Page -->
+    <section id="page-papers" class="page">
+      <div class="hero">
+        <h1>My Papers</h1>
+        <p class="subtitle">
+          Manage your uploaded papers, analyze them, and compare findings.
+        </p>
+      </div>
+
+      <div class="papers-toolbar">
+        <button id="refresh-papers-btn" class="secondary-btn">Refresh</button>
+        <button id="compare-selected-btn" class="secondary-btn" disabled>Compare Selected</button>
+        <button id="detect-gaps-btn" class="secondary-btn" disabled>Detect Research Gaps</button>
+        <button id="generate-report-btn" class="secondary-btn" disabled>Generate Report</button>
+      </div>
+
+      <section id="papers-list" class="papers-grid"></section>
+    </section>
+
+    <!-- Reports Page -->
+    <section id="page-reports" class="page">
+      <div class="hero">
+        <h1>Literature Review Reports</h1>
+        <p class="subtitle">
+          View and export generated literature review reports.
+        </p>
+      </div>
+
+      <section id="reports-list" class="reports-grid"></section>
+    </section>
+
+    <!-- Paper Detail Modal -->
+    <div id="paper-modal" class="modal">
+      <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h2 id="modal-title">Paper Details</h2>
+        <div id="modal-body"></div>
+        <div class="modal-actions">
+          <button id="analyze-paper-btn" class="action-btn">Analyze Paper</button>
+          <button id="view-chunks-btn" class="action-btn">View Chunks</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analysis Modal -->
+    <div id="analysis-modal" class="modal">
+      <div class="modal-content large">
+        <span class="close-modal">&times;</span>
+        <h2>Paper Analysis</h2>
+        <div id="analysis-body"></div>
+      </div>
+    </div>
+
+    <!-- Comparison Modal -->
+    <div id="comparison-modal" class="modal">
+      <div class="modal-content large">
+        <span class="close-modal">&times;</span>
+        <h2>Paper Comparison</h2>
+        <div id="comparison-body"></div>
+      </div>
+    </div>
+
+    <!-- Research Gaps Modal -->
+    <div id="gaps-modal" class="modal">
+      <div class="modal-content large">
+        <span class="close-modal">&times;</span>
+        <h2>Candidate Research Gaps</h2>
+        <div id="gaps-body"></div>
+      </div>
+    </div>
+
+    <!-- Report Modal -->
+    <div id="report-modal" class="modal">
+      <div class="modal-content large">
+        <span class="close-modal">&times;</span>
+        <h2 id="report-title">Literature Review Report</h2>
+        <div class="report-actions">
+          <button id="download-report-btn" class="action-btn">Download Markdown</button>
+        </div>
+        <div id="report-body"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>PaperSense — Final Year Project | Backend status: <span id="backend-status">checking...</span></p>
+  </footer>
+
+  <script src="/static/js/script.js?v=3"></script>
+</body>
+</html>
