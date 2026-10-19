@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+data/papers/*
+data/processed/*
+data/vector_store/*
+!data/papers/.gitkeep
+!data/processed/.gitkeep
+!data/vector_store/.gitkeep
+node_modules/
+.DS_Store

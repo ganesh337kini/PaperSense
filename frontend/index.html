@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PaperSense — Intelligent Research Paper Analysis</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">📄 PaperSense</div>
+    <nav class="nav-links">
+      <a href="#" class="active">Search</a>
+      <a href="#">Upload</a>
+      <a href="#">History</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <h1>Ask a research question.</h1>
+      <p class="subtitle">
+        PaperSense searches academic sources, reads the papers, and gives you
+        a grounded, cited answer — not just a list of links.
+      </p>
+
+      <form id="search-form" class="search-box">
+        <input
+          type="text"
+          id="query-input"
+          placeholder="e.g. Analyze recent research on ML-based phishing detection"
+          autocomplete="off"
+          required
+        />
+        <button type="submit" id="search-btn">Search</button>
+      </form>
+
+      <p id="status-line" class="status-line"></p>
+    </section>
+
+    <section id="results" class="results-grid"></section>
+  </main>
+
+  <footer class="footer">
+    <p>PaperSense — Final Year Project | Backend status: <span id="backend-status">checking...</span></p>
+  </footer>
+
+  <script src="/static/js/script.js"></script>
+</body>
+</html>
