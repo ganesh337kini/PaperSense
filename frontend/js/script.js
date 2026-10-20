@@ -1244,12 +1244,16 @@ async function setupCitationsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Citation fetch failed");
       const graph = data.citation_graph || {};
-      if (graph.error) {
+      const count = (graph.citations || []).length;
+
+      if (graph.offline_fallback || graph.note) {
+        statusEl.textContent = graph.note || "⚡ Displaying citation consensus from document references & local corpus (offline mode).";
+        showToast(`⚡ Loaded ${count} consensus citations via Offline Engine!`, "success", 4000);
+      } else if (graph.error) {
         statusEl.textContent = `Note: ${graph.error}`;
         showToast(`ℹ️ ${graph.error}`, "warning", 5000);
       } else {
-        const count = (graph.citations || []).length;
-        statusEl.textContent = `Found ${count} related papers.`;
+        statusEl.textContent = `Found ${count} related papers via Semantic Scholar.`;
         showToast(`✅ Found ${count} citation graph connections!`, "success");
       }
       renderCitations(graph, resultsEl);
@@ -1265,10 +1269,18 @@ async function setupCitationsPage() {
 function renderCitations(graph, container) {
   const citations = graph.citations || [];
   if (!citations.length) {
-    container.innerHTML = "<p style='color:var(--text-dim)'>No citations found. This may require network access to Semantic Scholar.</p>";
+    container.innerHTML = "<p style='color:var(--text-dim)'>No citations found. You can upload additional papers to enable local cross-paper agreement analysis.</p>";
     return;
   }
-  let html = `<h3 style="color:var(--text-dim);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:12px;">Related Papers</h3>`;
+  let html = "";
+  if (graph.offline_fallback) {
+    html += `
+      <div class="offline-citation-banner">
+        <span>⚡ <strong>Offline Consensus Engine:</strong> Sourced from internal document references and local scholarly corpus.</span>
+      </div>
+    `;
+  }
+  html += `<h3 style="color:var(--text-dim);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:12px;">Related Papers &amp; Consensus</h3>`;
   citations.forEach(c => {
     const rel = (c.relationship || "UNRELATED").toUpperCase();
     const authors = (c.authors || []).slice(0, 3).join(", ");

@@ -1103,6 +1103,19 @@ body {
   border-left: 4px solid #f59e0b;
 }
 
+.offline-citation-banner {
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #a5b4fc;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  font-size: 0.88rem;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .toast.error {
   border-left: 4px solid #ef4444;
 }

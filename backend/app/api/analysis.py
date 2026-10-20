@@ -506,7 +506,7 @@ def run_peer_review(paper_id: int, db: Session = Depends(get_db)):
 
 @router.post("/citations/{paper_id}")
 def get_citation_graph(paper_id: int, db: Session = Depends(get_db)):
-    """Build a semantic citation graph for a paper."""
+    """Build a semantic citation graph for a paper with offline consensus fallback."""
     paper = db.query(Paper).filter(Paper.id == paper_id).first()
     if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
@@ -518,9 +518,29 @@ def get_citation_graph(paper_id: int, db: Session = Depends(get_db)):
             abstract = a.get("research_problem", "") + " " + a.get("key_findings", "")
         except Exception:
             pass
+
+    chunks = db.query(PaperChunk).filter(PaperChunk.paper_id == paper_id).all()
+    chunks_text = [c.text for c in chunks]
+
+    other_papers = [
+        {
+            "title": p.title,
+            "abstract": p.abstract or "",
+            "authors": p.authors or "",
+            "year": p.year or "N/A"
+        }
+        for p in db.query(Paper).filter(Paper.id != paper_id).all()
+    ]
+
     try:
         client = llm_service.client if not llm_service.mock_mode else None
-        graph = citation_service.build_citation_graph(paper.title, abstract, client)
+        graph = citation_service.build_citation_graph(
+            paper_title=paper.title,
+            paper_abstract=abstract,
+            openai_client=client,
+            chunks_text=chunks_text,
+            other_papers=other_papers,
+        )
         return {"status": "success", "paper_id": paper_id, "citation_graph": graph}
     except Exception as e:
         return {
