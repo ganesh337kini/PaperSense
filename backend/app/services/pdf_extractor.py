@@ -4,7 +4,7 @@ Handles PDF text extraction using PyMuPDF.
 Extracts text with page numbers and detects image-only PDFs.
 """
 
-import fitz  # PyMuPDF
+import pymupdf as fitz
 from typing import List, Tuple, Optional
 from pathlib import Path
 

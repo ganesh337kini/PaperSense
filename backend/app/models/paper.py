@@ -6,19 +6,11 @@ whether discovered via an academic API (Phase 5) or uploaded by the user
 """
 
 from datetime import datetime
-from enum import Enum
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, Text, DateTime
 from sqlalchemy.orm import relationship
 
 from app.database import Base
-
-
-class ProcessingStatus(str, Enum):
-    QUEUED = "queued"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
 
 
 class Paper(Base):
@@ -36,7 +28,7 @@ class Paper(Base):
     # PDF upload fields
     file_path = Column(String(500), nullable=True)
     file_name = Column(String(255), nullable=True)
-    processing_status = Column(SQLEnum(ProcessingStatus), default=ProcessingStatus.QUEUED)
+    processing_status = Column(String(50), default="queued")
     processing_error = Column(Text, nullable=True)
     total_pages = Column(Integer, nullable=True)
     

@@ -18,7 +18,12 @@ from app.config import settings
 # `echo=settings.DEBUG` prints every SQL statement to the terminal while
 # DEBUG=True in .env — handy for seeing exactly what's happening, turn off
 # in production by setting DEBUG=False.
-engine = create_engine(settings.DATABASE_URL, echo=settings.DEBUG)
+# SQLite doesn't support multiple threads, so we add check_same_thread=False
+engine = create_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

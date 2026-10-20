@@ -11,15 +11,14 @@ import uuid
 from typing import List
 
 from app.database import get_db
-from app.models.paper import Paper, ProcessingStatus
+from app.models.paper import Paper
 from app.models.paper_chunk import PaperChunk
 from app.services.pdf_extractor import PDFExtractor
 from app.services.text_chunker import TextChunker
-from app.services.embedding_service import EmbeddingService
+from app.services.embedding_service import embedding_service
 from app.config import settings
 
 router = APIRouter()
-embedding_service = EmbeddingService()
 chunker = TextChunker()
 
 
@@ -70,7 +69,7 @@ async def upload_pdf(
         source="upload",
         file_name=file.filename,
         file_path=str(file_path),
-        processing_status=ProcessingStatus.QUEUED
+        processing_status="queued"
     )
     db.add(paper)
     db.commit()
@@ -78,7 +77,7 @@ async def upload_pdf(
     
     # Process PDF (extract text, chunk, embed)
     try:
-        paper.processing_status = ProcessingStatus.PROCESSING
+        paper.processing_status = "processing"
         db.commit()
         
         # Extract text
@@ -135,7 +134,7 @@ async def upload_pdf(
         # Save index
         embedding_service.save_index()
         
-        paper.processing_status = ProcessingStatus.COMPLETED
+        paper.processing_status = "completed"
         db.commit()
         
         return {
@@ -148,7 +147,7 @@ async def upload_pdf(
         }
         
     except Exception as e:
-        paper.processing_status = ProcessingStatus.FAILED
+        paper.processing_status = "failed"
         paper.processing_error = str(e)
         db.commit()
         raise HTTPException(status_code=500, detail=f"PDF processing failed: {str(e)}")
@@ -166,7 +165,7 @@ def list_papers(db: Session = Depends(get_db)):
                 "id": p.id,
                 "title": p.title,
                 "file_name": p.file_name,
-                "processing_status": p.processing_status.value,
+                "processing_status": p.processing_status,
                 "total_pages": p.total_pages,
                 "created_at": p.created_at.isoformat(),
                 "processing_error": p.processing_error
@@ -196,7 +195,7 @@ def get_paper(paper_id: int, db: Session = Depends(get_db)):
             "year": paper.year,
             "doi": paper.doi,
             "source": paper.source,
-            "processing_status": paper.processing_status.value,
+            "processing_status": paper.processing_status,
             "total_pages": paper.total_pages,
             "analysis": paper.analysis,
             "created_at": paper.created_at.isoformat()

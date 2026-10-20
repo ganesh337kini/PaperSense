@@ -5,8 +5,10 @@ API endpoints for paper analysis, comparison, and research gap detection.
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
+from pydantic import BaseModel
 import json
+from datetime import datetime
 
 from app.database import get_db
 from app.models.paper import Paper
@@ -15,13 +17,27 @@ from app.models.research_query import ResearchQuery
 from app.models.report import Report
 from app.services.llm_service import LLMService
 from app.services.report_service import ReportService
-from app.services.embedding_service import EmbeddingService
-from datetime import datetime
+from app.services.embedding_service import embedding_service
 
 router = APIRouter()
 llm_service = LLMService()
 report_service = ReportService()
-embedding_service = EmbeddingService()
+
+
+class AskQuestionRequest(BaseModel):
+    paper_id: Optional[int] = None
+    question: str
+
+
+class SemanticSearchRequest(BaseModel):
+    query: str
+    paper_ids: Optional[List[int]] = None
+    top_k: int = 5
+
+
+class GenerateReportRequest(BaseModel):
+    query: str
+    paper_ids: List[int]
 
 
 @router.post("/analyze/{paper_id}")
@@ -35,10 +51,10 @@ def analyze_paper(paper_id: int, db: Session = Depends(get_db)):
     if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
     
-    if paper.processing_status.value != "completed":
+    if paper.processing_status != "completed":
         raise HTTPException(
             status_code=400,
-            detail=f"Paper processing status is {paper.processing_status.value}. Cannot analyze."
+            detail=f"Paper processing status is {paper.processing_status}. Cannot analyze."
         )
     
     # Get chunks
@@ -161,30 +177,150 @@ def detect_research_gaps(paper_ids: List[int], db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Research gap detection failed: {str(e)}")
 
 
+@router.post("/ask-question")
+def ask_question(
+    req: AskQuestionRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Answer a specific question about a paper (or across all uploaded papers) using LLM / RAG.
+    Returns the answer with evidence citations.
+    """
+    target_paper_id = req.paper_id
+    target_question = (req.question or "").strip()
+
+    if not target_question:
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    if target_paper_id is not None:
+        paper = db.query(Paper).filter(Paper.id == target_paper_id).first()
+
+        if not paper:
+            raise HTTPException(status_code=404, detail="Paper not found")
+
+        if paper.processing_status != "completed":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Paper processing status is {paper.processing_status}. Cannot answer questions."
+            )
+
+        # Get chunks
+        chunks = db.query(PaperChunk).filter(PaperChunk.paper_id == target_paper_id).order_by(PaperChunk.chunk_index).all()
+
+        if not chunks:
+            raise HTTPException(status_code=400, detail="No text chunks found for this paper")
+
+        # Use semantic search to identify most relevant chunks for this specific question
+        chunks_by_index = {c.chunk_index: c for c in chunks}
+        search_results = embedding_service.search(target_question, top_k=6, paper_ids=[target_paper_id])
+
+        ranked_chunks = []
+        seen_indices = set()
+        for res in search_results:
+            c_idx = res.get("chunk_id")
+            if c_idx in chunks_by_index and c_idx not in seen_indices:
+                seen_indices.add(c_idx)
+                c = chunks_by_index[c_idx]
+                ranked_chunks.append({
+                    "text": c.text,
+                    "page_number": c.page_number,
+                    "section": c.section
+                })
+
+        # Append additional chunks if needed
+        if len(ranked_chunks) < 3:
+            for c in chunks:
+                if c.chunk_index not in seen_indices:
+                    ranked_chunks.append({
+                        "text": c.text,
+                        "page_number": c.page_number,
+                        "section": c.section
+                    })
+                    seen_indices.add(c.chunk_index)
+                    if len(ranked_chunks) >= 6:
+                        break
+
+        try:
+            answer = llm_service.answer_question(target_question, ranked_chunks, paper.title)
+
+            return {
+                "status": "success",
+                "paper_id": target_paper_id,
+                "paper_title": paper.title,
+                "question": target_question,
+                "answer": answer
+            }
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Question answering failed: {str(e)}")
+
+    else:
+        # Question across all completed papers
+        completed_papers = db.query(Paper).filter(Paper.processing_status == "completed").all()
+        if not completed_papers:
+            raise HTTPException(status_code=400, detail="No completed papers found. Please upload a PDF first.")
+
+        paper_map = {p.id: p for p in completed_papers}
+        search_results = embedding_service.search(target_question, top_k=6, paper_ids=list(paper_map.keys()))
+
+        ranked_chunks = []
+        titles_used = set()
+        for res in search_results:
+            p_id = res.get("paper_id")
+            c_idx = res.get("chunk_id")
+            if p_id in paper_map:
+                chunk = db.query(PaperChunk).filter(
+                    PaperChunk.paper_id == p_id,
+                    PaperChunk.chunk_index == c_idx
+                ).first()
+                if chunk:
+                    ranked_chunks.append({
+                        "text": chunk.text,
+                        "page_number": chunk.page_number,
+                        "section": chunk.section
+                    })
+                    titles_used.add(paper_map[p_id].title)
+
+        if not ranked_chunks:
+            # Fallback to chunks from first available paper
+            first_paper = completed_papers[0]
+            chunks = db.query(PaperChunk).filter(PaperChunk.paper_id == first_paper.id).limit(6).all()
+            ranked_chunks = [{"text": c.text, "page_number": c.page_number, "section": c.section} for c in chunks]
+            titles_used.add(first_paper.title)
+
+        title_summary = ", ".join(list(titles_used)[:3])
+        try:
+            answer = llm_service.answer_question(target_question, ranked_chunks, title_summary)
+
+            return {
+                "status": "success",
+                "paper_id": None,
+                "paper_title": title_summary,
+                "question": target_question,
+                "answer": answer
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Question answering failed: {str(e)}")
+
+
 @router.post("/semantic-search")
-def semantic_search(query: str, paper_ids: List[int] = None, top_k: int = 5):
+def semantic_search(
+    req: SemanticSearchRequest
+):
     """
     Search for relevant passages using semantic similarity.
     Can filter by specific papers.
     """
-    if not query or not query.strip():
+    actual_query = (req.query or "").strip()
+    if not actual_query:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
     
     try:
-        # Load index
-        if not embedding_service.load_index():
-            return {
-                "status": "success",
-                "results": [],
-                "message": "No embeddings index found. Upload and process papers first."
-            }
-        
-        # Search
-        results = embedding_service.search(query, top_k=top_k, paper_ids=paper_ids)
+        results = embedding_service.search(actual_query, top_k=req.top_k, paper_ids=req.paper_ids)
         
         return {
             "status": "success",
-            "query": query,
+            "query": actual_query,
             "results": results
         }
         
@@ -194,24 +330,24 @@ def semantic_search(query: str, paper_ids: List[int] = None, top_k: int = 5):
 
 @router.post("/generate-report")
 def generate_report(
-    query: str,
-    paper_ids: List[int],
+    req: GenerateReportRequest,
     db: Session = Depends(get_db)
 ):
     """
     Generate a complete literature review report.
     Includes analysis, comparison, and research gaps.
     """
-    if not query or not query.strip():
+    actual_query = (req.query or "").strip()
+    if not actual_query:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
     
-    if len(paper_ids) < 1:
+    if not req.paper_ids or len(req.paper_ids) < 1:
         raise HTTPException(status_code=400, detail="At least 1 paper required")
     
     # Get papers
-    papers = db.query(Paper).filter(Paper.id.in_(paper_ids)).all()
+    papers = db.query(Paper).filter(Paper.id.in_(req.paper_ids)).all()
     
-    if len(papers) != len(paper_ids):
+    if len(papers) != len(req.paper_ids):
         raise HTTPException(status_code=404, detail="One or more papers not found")
     
     # Ensure all papers are analyzed
@@ -241,7 +377,7 @@ def generate_report(
         
         # Generate report
         report_markdown = report_service.generate_report(
-            query=query,
+            query=actual_query,
             papers=papers_data,
             comparison=comparison,
             research_gaps=gaps,
@@ -249,7 +385,7 @@ def generate_report(
         )
         
         # Save research query
-        research_query = ResearchQuery(query=query)
+        research_query = ResearchQuery(query=actual_query)
         db.add(research_query)
         db.commit()
         db.refresh(research_query)
@@ -257,9 +393,9 @@ def generate_report(
         # Save report
         report = Report(
             query_id=research_query.id,
-            title=f"Literature Review: {query}",
+            title=f"Literature Review: {actual_query}",
             report_content=report_markdown,
-            paper_ids=json.dumps(paper_ids)
+            paper_ids=json.dumps(req.paper_ids)
         )
         db.add(report)
         db.commit()

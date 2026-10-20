@@ -1,13 +1,51 @@
-__pycache__/
-*.pyc
-.venv/
+# Python virtual environments
+backend/venv/
 venv/
+.venv/
+**/venv/**
+**/.venv/**
+env/
+**/env/**
+
+# Python cache
+__pycache__/
+**/__pycache__/**
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Environment files
 .env
+backend/.env
+
+# Binary artifacts, models, and databases
+*.db
+*.sqlite
+*.sqlite3
+*.bin
+*.pkl
+faiss_index.bin
+faiss_metadata.pkl
+backend/faiss_index.bin
+backend/faiss_metadata.pkl
+
+# Uploads
+backend/uploads/*
+uploads/*
+!backend/uploads/.gitkeep
+!uploads/.gitkeep
+
+# Data directories
 data/papers/*
 data/processed/*
 data/vector_store/*
 !data/papers/.gitkeep
 !data/processed/.gitkeep
 !data/vector_store/.gitkeep
+
+# System and IDE files
 node_modules/
 .DS_Store
+.idea/
+.vscode/

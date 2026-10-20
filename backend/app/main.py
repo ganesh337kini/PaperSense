@@ -21,7 +21,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -80,22 +80,21 @@ def health_check():
 @app.get("/api/db-health")
 def db_health_check(db: Session = Depends(get_db)):
     """
-    Confirms the backend can actually talk to PostgreSQL, and lists which
-    tables exist. If DATABASE_URL in .env is wrong, this endpoint will
-    return a 500 error with the underlying connection error message.
+    Confirms the backend can talk to the database and lists existing tables.
+    Works seamlessly with both SQLite and PostgreSQL.
     """
-    result = db.execute(
-        text(
-            "SELECT table_name FROM information_schema.tables "
-            "WHERE table_schema = 'public' ORDER BY table_name"
-        )
-    )
-    tables = [row[0] for row in result]
-    return {
-        "status": "connected",
-        "database": settings.DATABASE_URL.split("@")[-1],  # hides credentials
-        "tables": tables,
-    }
+    try:
+        tables = inspect(db.bind).get_table_names()
+        return {
+            "status": "connected",
+            "database": settings.DATABASE_URL.split("@")[-1],  # hides credentials
+            "tables": tables,
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+        }
 
 
 # Serve CSS/JS as static files under /static

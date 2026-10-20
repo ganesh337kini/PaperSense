@@ -9,24 +9,30 @@ from typing import List, Dict, Optional
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import faiss
+from app.config import settings
 
 
 class EmbeddingService:
     """Manages text embeddings and vector search using FAISS."""
     
-    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
-        self.model_name = model_name
+    def __init__(self, model_name: Optional[str] = None):
+        self.model_name = model_name or settings.EMBEDDING_MODEL
         self.model = None
         self.index = None
-        self.dimension = 384  # Dimension for all-MiniLM-L6-v2
-        self.index_path = Path("faiss_index.bin")
-        self.metadata_path = Path("faiss_metadata.pkl")
+        self.dimension = settings.EMBEDDING_DIMENSION
+        self.index_path = Path(settings.FAISS_INDEX_PATH)
+        self.metadata_path = Path(settings.FAISS_METADATA_PATH)
         self.chunk_metadata = []  # Stores metadata for each vector
     
     def load_model(self):
-        """Load the sentence transformer model."""
+        """Load the sentence transformer model, trying local cache first."""
         if self.model is None:
-            self.model = SentenceTransformer(self.model_name)
+            try:
+                # Fast path: use already cached model files without checking remote
+                self.model = SentenceTransformer(self.model_name, local_files_only=True)
+            except Exception:
+                # Fallback to standard loading if not cached locally yet
+                self.model = SentenceTransformer(self.model_name)
     
     def create_index(self):
         """Create a new FAISS index."""
@@ -34,16 +40,21 @@ class EmbeddingService:
     
     def load_index(self):
         """Load existing FAISS index from disk."""
-        if self.index_path.exists():
-            self.index = faiss.read_index(str(self.index_path))
-            with open(self.metadata_path, 'rb') as f:
-                self.chunk_metadata = pickle.load(f)
-            return True
+        if self.index_path.exists() and self.metadata_path.exists():
+            try:
+                self.index = faiss.read_index(str(self.index_path))
+                with open(self.metadata_path, 'rb') as f:
+                    self.chunk_metadata = pickle.load(f)
+                return True
+            except Exception as e:
+                print(f"Warning: Failed to load FAISS index: {e}")
+                return False
         return False
     
     def save_index(self):
         """Save FAISS index and metadata to disk."""
         if self.index is not None:
+            self.index_path.parent.mkdir(parents=True, exist_ok=True)
             faiss.write_index(self.index, str(self.index_path))
             with open(self.metadata_path, 'wb') as f:
                 pickle.dump(self.chunk_metadata, f)
@@ -106,14 +117,16 @@ class EmbeddingService:
         self.load_model()
         
         if self.index is None or self.index.ntotal == 0:
-            return []
+            if not self.load_index() or self.index is None or self.index.ntotal == 0:
+                return []
         
         # Generate query embedding
         query_embedding = self.model.encode([query], show_progress_bar=False)
         query_embedding = query_embedding.astype('float32')
         
-        # Search
-        distances, indices = self.index.search(query_embedding, min(top_k, self.index.ntotal))
+        # Search: query more items if filtering by paper_ids to avoid dropping matches
+        search_limit = min(max(top_k * 5, 20), self.index.ntotal) if paper_ids else min(top_k, self.index.ntotal)
+        distances, indices = self.index.search(query_embedding, search_limit)
         
         # Build results
         results = []
@@ -125,9 +138,11 @@ class EmbeddingService:
                 # Filter by paper IDs if specified
                 if paper_ids is None or metadata.get("paper_id") in paper_ids:
                     results.append(metadata)
+                    if len(results) >= top_k:
+                        break
         
-        return results[:top_k]
-    
+        return results
+
     def delete_by_paper_id(self, paper_id: int):
         """Remove all embeddings for a specific paper."""
         # Note: FAISS doesn't support deletion, so we rebuild the index
@@ -152,3 +167,7 @@ class EmbeddingService:
                 self.index.add(embeddings.astype('float32'))
             
             self.save_index()
+
+
+# Global singleton instance
+embedding_service = EmbeddingService()

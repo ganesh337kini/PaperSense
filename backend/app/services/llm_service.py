@@ -16,17 +16,36 @@ class LLMService:
     def __init__(self):
         self.client = OpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
         self.model = settings.OPENAI_MODEL
+        self.mock_mode = not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY == "your_openai_api_key_here"
     
     def analyze_paper(self, chunks: List[Dict]) -> Dict:
         """
         Analyze a research paper using its text chunks.
-        
+
         Args:
             chunks: List of text chunks with page numbers
-        
+
         Returns:
             Structured analysis with evidence citations
         """
+        if self.mock_mode:
+            # Return mock response when no API key is configured
+            return {
+                "research_problem": "Mock research problem - configure OpenAI API key for real analysis",
+                "research_objectives": "Mock objectives",
+                "methodology": "Mock methodology",
+                "dataset": "Mock dataset",
+                "evaluation_metrics": "Mock metrics",
+                "key_findings": "Mock findings",
+                "main_contributions": "Mock contributions",
+                "limitations": "Mock limitations",
+                "future_work": "Mock future work",
+                "evidence": {
+                    "research_problem": {"text": "Mock evidence", "page": 1},
+                    "methodology": {"text": "Mock evidence", "page": 2}
+                }
+            }
+
         if not self.client:
             raise Exception("OpenAI API key not configured")
         
@@ -103,13 +122,33 @@ Return a JSON object with the following structure:
     def compare_papers(self, papers: List[Dict]) -> Dict:
         """
         Compare multiple research papers.
-        
+
         Args:
             papers: List of paper dictionaries with title, year, and analysis
-        
+
         Returns:
             Comparison table and synthesis
         """
+        if self.mock_mode:
+            # Return mock response when no API key is configured
+            return {
+                "comparison_table": [
+                    {
+                        "title": papers[0].get("title", "Paper 1"),
+                        "year": papers[0].get("year", "N/A"),
+                        "research_problem": "Mock problem",
+                        "methodology": "Mock methodology",
+                        "dataset": "Mock dataset",
+                        "evaluation_metrics": "Mock metrics",
+                        "key_findings": "Mock findings",
+                        "strengths": "Mock strengths",
+                        "limitations": "Mock limitations",
+                        "unresolved_questions": "Mock questions"
+                    }
+                ],
+                "synthesis": "Mock synthesis - configure OpenAI API key for real comparison"
+            }
+
         if not self.client:
             raise Exception("OpenAI API key not configured")
         
@@ -185,13 +224,31 @@ Return a JSON object with:
     def detect_research_gaps(self, papers: List[Dict]) -> Dict:
         """
         Identify candidate research gaps from multiple papers.
-        
+
         Args:
             papers: List of paper dictionaries with analysis
-        
+
         Returns:
             Candidate research gaps with evidence
         """
+        if self.mock_mode:
+            # Return mock response when no API key is configured
+            return {
+                "research_gaps": [
+                    {
+                        "gap_statement": "Mock research gap",
+                        "supporting_papers": [p.get("title", "Paper") for p in papers],
+                        "evidence": "Mock evidence",
+                        "why_it_matters": "Mock importance",
+                        "research_question": "Mock research question",
+                        "validation_approach": "Mock validation",
+                        "confidence": "Low (mock mode)",
+                        "rationale": "Mock rationale",
+                        "alternative_explanations": "Mock alternatives"
+                    }
+                ]
+            }
+
         if not self.client:
             raise Exception("OpenAI API key not configured")
         
@@ -263,6 +320,138 @@ Return a JSON object with:
                     "raw_gaps": content,
                     "error": "Failed to parse structured gaps"
                 }
-                
+
         except Exception as e:
             raise Exception(f"Research gap detection failed: {str(e)}")
+
+    def answer_question(self, question: str, chunks: List[Dict], paper_title: str = "") -> Dict:
+        """
+        Answer a specific question about a paper using its text chunks.
+
+        Args:
+            question: The user's question
+            chunks: List of text chunks with page numbers
+            paper_title: Title of the paper
+
+        Returns:
+            Answer with evidence citations
+        """
+        if self.mock_mode or not self.client:
+            return self._generate_grounded_answer(question, chunks, paper_title)
+
+        # Select most relevant chunks (top 8 max to stay within token limits)
+        selected_chunks = chunks[:8]
+        full_text = "\n\n".join([
+            f"[Page {c.get('page_number', 'N/A')}] {c.get('text', '')}"
+            for c in selected_chunks
+        ])
+
+        if len(full_text) > 12000:
+            full_text = full_text[:12000] + "\n\n[Text truncated due to length]"
+
+        prompt = f"""
+You are analyzing a research paper titled: {paper_title}
+
+Relevant paper passages:
+{full_text}
+
+Question: {question}
+
+Provide a clear, accurate answer based ONLY on the paper text above. If the answer is not in the text, state that clearly.
+
+Return a JSON object with the following structure:
+{{
+    "answer": "Your detailed answer to the question",
+    "evidence": [
+        {{
+            "text": "Direct quote from the paper supporting your answer",
+            "page": page_number,
+            "relevance": "Brief explanation of how this evidence supports the answer"
+        }}
+    ],
+    "confidence": "High/Medium/Low",
+    "reasoning": "Brief explanation of your reasoning process"
+}}
+"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a research assistant that answers questions about academic papers. Always provide evidence with page references."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1500
+            )
+
+            content = response.choices[0].message.content
+
+            # Parse JSON response
+            try:
+                json_start = content.find('{')
+                json_end = content.rfind('}') + 1
+                if json_start >= 0 and json_end > json_start:
+                    content = content[json_start:json_end]
+
+                answer = json.loads(content)
+                return answer
+            except json.JSONDecodeError:
+                return {
+                    "answer": content,
+                    "evidence": [],
+                    "confidence": "Medium",
+                    "reasoning": "Raw answer generated by model"
+                }
+
+        except Exception as e:
+            # Fall back to grounded answer if OpenAI fails
+            grounded = self._generate_grounded_answer(question, chunks, paper_title)
+            grounded["warning"] = f"AI completion failed ({str(e)}), showing extracted paper passages."
+            return grounded
+
+    def _generate_grounded_answer(self, question: str, chunks: List[Dict], paper_title: str = "") -> Dict:
+        """
+        Produce a grounded answer with real evidence citations directly from paper chunks
+        when running offline or without an OpenAI API key.
+        """
+        if not chunks:
+            return {
+                "answer": f"No relevant content found in the paper to answer: '{question}'.",
+                "evidence": [],
+                "confidence": "Low",
+                "reasoning": "No text chunks available for retrieval."
+            }
+
+        title_prefix = f"In \"{paper_title}\", " if paper_title else ""
+        top_chunk = chunks[0]
+        top_text = top_chunk.get("text", "").strip()
+        top_page = top_chunk.get("page_number", 1)
+        top_section = top_chunk.get("section") or "Relevant Section"
+
+        # Build evidence items from top matching chunks
+        evidence_list = []
+        for c in chunks[:3]:
+            text = c.get("text", "").strip()
+            if text:
+                quote = text[:300] + ("..." if len(text) > 300 else "")
+                evidence_list.append({
+                    "text": quote,
+                    "page": c.get("page_number", 1),
+                    "relevance": f"Found on page {c.get('page_number', 1)} addressing the query"
+                })
+
+        # Synthesize a clean, readable answer from the top text
+        excerpt = top_text[:450] + ("..." if len(top_text) > 450 else "")
+        answer_text = (
+            f"{title_prefix}the most relevant section discussing this was found on Page {top_page} "
+            f"({top_section}):\n\n\"{excerpt}\""
+        )
+
+        return {
+            "answer": answer_text,
+            "evidence": evidence_list,
+            "confidence": "High (Extracted from paper)",
+            "reasoning": f"Identified {len(chunks)} relevant passage(s) directly from the paper using semantic vector search."
+        }
+

@@ -4,6 +4,7 @@ const API_BASE = "";
 let selectedPapers = new Set();
 let currentPaperId = null;
 let currentReportContent = null;
+let allUploadedPapers = [];
 
 // Navigation
 function setupNavigation() {
@@ -37,6 +38,8 @@ function navigateTo(page) {
     loadPapers();
   } else if (page === 'reports') {
     loadReports();
+  } else if (page === 'chat') {
+    setupChatPage();
   }
 }
 
@@ -215,6 +218,9 @@ async function loadPapers() {
       throw new Error(data.detail || "Failed to load papers");
     }
 
+    allUploadedPapers = data.papers || [];
+    populateChatPaperSelect();
+
     papersList.innerHTML = "";
 
     if (!data.papers || data.papers.length === 0) {
@@ -352,7 +358,7 @@ async function analyzePaper() {
 
 function displayAnalysis(analysis) {
   let body = "";
-  
+
   const sections = [
     { key: "research_problem", title: "Research Problem" },
     { key: "research_objectives", title: "Research Objectives" },
@@ -364,18 +370,20 @@ function displayAnalysis(analysis) {
     { key: "limitations", title: "Limitations" },
     { key: "future_work", title: "Future Work" }
   ];
-  
+
   sections.forEach(section => {
-    if (analysis[section.key]) {
+    const value = analysis[section.key];
+    if (value) {
+      const displayValue = typeof value === 'object' ? JSON.stringify(value) : value;
       body += `
         <div class="analysis-section">
           <h4>${section.title}</h4>
-          <p>${analysis[section.key]}</p>
+          <p>${displayValue}</p>
         </div>
       `;
     }
   });
-  
+
   if (analysis.evidence) {
     body += `<h3>Evidence</h3>`;
     Object.entries(analysis.evidence).forEach(([key, evidence]) => {
@@ -389,7 +397,7 @@ function displayAnalysis(analysis) {
       }
     });
   }
-  
+
   document.getElementById("analysis-body").innerHTML = body;
   document.getElementById("analysis-modal").style.display = "block";
 }
@@ -426,28 +434,30 @@ async function comparePapers() {
 
 function displayComparison(comparison) {
   let body = `<h3>Synthesis</h3><p>${comparison.synthesis || "No synthesis available"}</p>`;
-  
-  if (comparison.comparison_table) {
+
+  if (comparison.comparison_table && Array.isArray(comparison.comparison_table)) {
     body += `<h3>Comparison Table</h3>`;
     body += `<table class="comparison-table"><thead><tr>`;
-    
+
     const headers = Object.keys(comparison.comparison_table[0]);
     headers.forEach(h => {
       body += `<th>${h}</th>`;
     });
     body += `</tr></thead><tbody>`;
-    
+
     comparison.comparison_table.forEach(row => {
       body += `<tr>`;
       headers.forEach(h => {
-        body += `<td>${row[h] || "N/A"}</td>`;
+        const value = row[h];
+        const displayValue = typeof value === 'object' ? JSON.stringify(value) : (value || "N/A");
+        body += `<td>${displayValue}</td>`;
       });
       body += `</tr>`;
     });
-    
+
     body += `</tbody></table>`;
   }
-  
+
   document.getElementById("comparison-body").innerHTML = body;
   document.getElementById("comparison-modal").style.display = "block";
 }
@@ -484,25 +494,29 @@ async function detectResearchGaps() {
 
 function displayResearchGaps(gaps) {
   let body = "";
-  
-  if (gaps.research_gaps && gaps.research_gaps.length > 0) {
+
+  if (gaps.research_gaps && Array.isArray(gaps.research_gaps) && gaps.research_gaps.length > 0) {
     gaps.research_gaps.forEach((gap, index) => {
+      const supportingPapers = Array.isArray(gap.supporting_papers)
+        ? gap.supporting_papers.join(", ")
+        : gap.supporting_papers || "N/A";
+
       body += `
         <div class="gap-item">
-          <h4>Gap ${index + 1}: ${gap.gap_statement}</h4>
-          <p><strong>Supporting Papers:</strong> ${gap.supporting_papers.join(", ")}</p>
-          <p><strong>Evidence:</strong> ${gap.evidence}</p>
-          <p><strong>Why It Matters:</strong> ${gap.why_it_matters}</p>
-          <p><strong>Research Question:</strong> ${gap.research_question}</p>
-          <p><strong>Validation Approach:</strong> ${gap.validation_approach}</p>
-          <p><strong>Confidence:</strong> ${gap.confidence} - ${gap.rationale}</p>
+          <h4>Gap ${index + 1}: ${gap.gap_statement || "No statement"}</h4>
+          <p><strong>Supporting Papers:</strong> ${supportingPapers}</p>
+          <p><strong>Evidence:</strong> ${gap.evidence || "N/A"}</p>
+          <p><strong>Why It Matters:</strong> ${gap.why_it_matters || "N/A"}</p>
+          <p><strong>Research Question:</strong> ${gap.research_question || "N/A"}</p>
+          <p><strong>Validation Approach:</strong> ${gap.validation_approach || "N/A"}</p>
+          <p><strong>Confidence:</strong> ${gap.confidence || "N/A"} - ${gap.rationale || "N/A"}</p>
         </div>
       `;
     });
   } else {
     body = "<p>No research gaps identified.</p>";
   }
-  
+
   document.getElementById("gaps-body").innerHTML = body;
   document.getElementById("gaps-modal").style.display = "block";
 }
@@ -648,6 +662,274 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("analyze-paper-btn").addEventListener("click", analyzePaper);
   document.getElementById("download-report-btn").addEventListener("click", downloadReport);
   
+  // Paper modal actions
+  document.getElementById("view-chunks-btn").addEventListener("click", () => viewPaperChunks(currentPaperId));
+  document.getElementById("ask-question-btn").addEventListener("click", openChatbot);
+
+  // Main chat page listeners
+  document.getElementById("main-send-chat-btn").addEventListener("click", () => sendChatMessage(false));
+  document.getElementById("main-chat-input").addEventListener("keypress", (e) => {
+    if (e.key === "Enter") sendChatMessage(false);
+  });
+  document.getElementById("clear-chat-btn").addEventListener("click", clearMainChat);
+
+  // Modal chat listeners
+  document.getElementById("send-chat-btn").addEventListener("click", () => sendChatMessage(true));
+  document.getElementById("chat-input").addEventListener("keypress", (e) => {
+    if (e.key === "Enter") sendChatMessage(true);
+  });
+
+  // Suggestion chips
+  document.querySelectorAll(".chat-suggestion-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const prompt = chip.dataset.prompt;
+      if (prompt) {
+        document.getElementById("main-chat-input").value = prompt;
+        sendChatMessage(false);
+      }
+    });
+  });
+
   // Start on search page
   navigateTo('search');
 });
+
+// View paper text chunks
+async function viewPaperChunks(paperId) {
+  if (!paperId) paperId = currentPaperId;
+  if (!paperId) return;
+
+  const modalBody = document.getElementById("chunks-body");
+  const modalTitle = document.getElementById("chunks-title");
+  modalBody.innerHTML = "<p>Loading text chunks...</p>";
+  document.getElementById("chunks-modal").style.display = "block";
+
+  try {
+    const res = await fetch(`${API_BASE}/api/papers/${paperId}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Failed to load chunks");
+
+    modalTitle.textContent = `Extracted Chunks: ${data.paper?.title || "Paper"}`;
+    if (!data.chunks || data.chunks.length === 0) {
+      modalBody.innerHTML = "<p>No text chunks found for this paper.</p>";
+      return;
+    }
+
+    modalBody.innerHTML = "";
+    data.chunks.forEach((c) => {
+      const item = document.createElement("div");
+      item.className = "chunk-item";
+      item.innerHTML = `
+        <div class="chunk-header">
+          <span>Page ${c.page_number} (Chunk #${c.chunk_index + 1})</span>
+          <span>${c.section || "Body"}</span>
+        </div>
+        <p class="chunk-text">${c.text}</p>
+      `;
+      modalBody.appendChild(item);
+    });
+  } catch (err) {
+    modalBody.innerHTML = `<p style="color: #ef4444;">Error loading chunks: ${err.message || err}</p>`;
+  }
+}
+
+// Populate the paper selector in the chat view
+function populateChatPaperSelect() {
+  const select = document.getElementById("chat-paper-select");
+  if (!select) return;
+  const currentVal = select.value;
+  select.innerHTML = '<option value="all">All Uploaded Papers</option>';
+  
+  allUploadedPapers.forEach(p => {
+    if (p.processing_status === "completed") {
+      const opt = document.createElement("option");
+      opt.value = String(p.id);
+      opt.textContent = p.title.length > 55 ? p.title.substring(0, 52) + "..." : p.title;
+      select.appendChild(opt);
+    }
+  });
+
+  if (currentVal && Array.from(select.options).some(o => o.value === currentVal)) {
+    select.value = currentVal;
+  }
+}
+
+// Setup dedicated chat page
+function setupChatPage() {
+  if (allUploadedPapers.length === 0) {
+    loadPapers();
+  } else {
+    populateChatPaperSelect();
+  }
+
+  const chatHistory = document.getElementById("main-chat-history");
+  if (!chatHistory.hasChildNodes()) {
+    renderChatMessage(
+      "bot",
+      "Hello! I am your PaperSense Research Assistant. Select a paper above or ask questions across all your uploaded papers. Every answer is grounded directly in the paper with page citations and evidence quotes.",
+      "main-chat-history"
+    );
+  }
+  document.getElementById("main-chat-input").focus();
+}
+
+function clearMainChat() {
+  const container = document.getElementById("main-chat-history");
+  if (container) {
+    container.innerHTML = "";
+    setupChatPage();
+  }
+}
+
+// Chatbot functionality
+function openChatbot() {
+  document.getElementById("paper-modal").style.display = "none";
+  // Seamlessly navigate to the rich Chat view with the chosen paper pre-selected
+  navigateTo('chat');
+  const select = document.getElementById("chat-paper-select");
+  if (currentPaperId && select) {
+    select.value = String(currentPaperId);
+  }
+  document.getElementById("main-chat-input").focus();
+}
+
+async function sendChatMessage(isModal = false) {
+  const input = document.getElementById(isModal ? "chat-input" : "main-chat-input");
+  const sendBtn = document.getElementById(isModal ? "send-chat-btn" : "main-send-chat-btn");
+  const historyContainerId = isModal ? "chat-history" : "main-chat-history";
+  const question = input.value.trim();
+
+  if (!question) return;
+
+  const targetPaperVal = isModal
+    ? currentPaperId
+    : document.getElementById("chat-paper-select").value;
+
+  const paperId = (!targetPaperVal || targetPaperVal === "all") ? null : parseInt(targetPaperVal);
+
+  // Add user message to chat UI
+  renderChatMessage("user", question, historyContainerId);
+  input.value = "";
+  sendBtn.disabled = true;
+
+  // Add typing indicator
+  const typingId = "typing-" + Date.now();
+  addTypingIndicator(historyContainerId, typingId);
+
+  try {
+    const payload = { question: question };
+    if (paperId !== null) {
+      payload.paper_id = paperId;
+    }
+
+    const response = await fetch(`${API_BASE}/api/ask-question`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    removeTypingIndicator(typingId);
+
+    if (!response.ok) {
+      let errorMsg = data.detail || "Failed to get answer";
+      if (Array.isArray(errorMsg)) {
+        errorMsg = errorMsg.map(e => e.msg || JSON.stringify(e)).join("; ");
+      } else if (typeof errorMsg === "object") {
+        errorMsg = JSON.stringify(errorMsg);
+      }
+      throw new Error(errorMsg);
+    }
+
+    if (data.answer) {
+      renderChatMessage("bot", data.answer, historyContainerId);
+    } else {
+      renderChatMessage("bot", "No answer received from server.", historyContainerId);
+    }
+
+  } catch (error) {
+    removeTypingIndicator(typingId);
+    console.error("Chat error:", error);
+    const errorMsg = error.message || String(error);
+    renderChatMessage("bot", `Error: ${errorMsg}`, historyContainerId);
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+function addTypingIndicator(containerId, typingId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const msgDiv = document.createElement("div");
+  msgDiv.className = "chat-message bot";
+  msgDiv.id = typingId;
+  msgDiv.innerHTML = `
+    <div class="message-content">
+      <div class="typing-indicator">
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+      </div>
+    </div>
+  `;
+  container.appendChild(msgDiv);
+  container.scrollTop = container.scrollHeight;
+}
+
+function removeTypingIndicator(typingId) {
+  const el = document.getElementById(typingId);
+  if (el) el.remove();
+}
+
+function renderChatMessage(role, content, containerId = "chat-history") {
+  const chatHistory = document.getElementById(containerId);
+  if (!chatHistory) return;
+  const messageDiv = document.createElement("div");
+  messageDiv.className = `chat-message ${role}`;
+
+  if (!content) {
+    messageDiv.innerHTML = `<div class="message-content"><p>No content</p></div>`;
+  } else if (typeof content === "object") {
+    // Structured answer object
+    let html = `<div class="message-content">`;
+    html += `<p class="answer-text">${content.answer || "No answer provided"}</p>`;
+
+    if (content.evidence && Array.isArray(content.evidence) && content.evidence.length > 0) {
+      html += `<div class="evidence-section"><h5>Evidence & Citations:</h5>`;
+      content.evidence.forEach((ev) => {
+        if (ev && ev.text) {
+          html += `
+            <div class="evidence-item">
+              <p><em>"${ev.text}"</em></p>
+              <p class="evidence-meta">Page ${ev.page ?? "N/A"}${ev.relevance ? " • " + ev.relevance : ""}</p>
+            </div>
+          `;
+        }
+      });
+      html += `</div>`;
+    }
+
+    if (content.confidence) {
+      html += `<p class="confidence">Confidence: ${content.confidence}</p>`;
+    }
+
+    if (content.reasoning) {
+      html += `<p class="reasoning"><strong>Reasoning:</strong> ${content.reasoning}</p>`;
+    }
+
+    if (content.warning) {
+      html += `<p class="evidence-meta" style="color: #f59e0b; margin-top: 6px;">Note: ${content.warning}</p>`;
+    }
+
+    html += `</div>`;
+    messageDiv.innerHTML = html;
+  } else {
+    // Plain text string
+    messageDiv.innerHTML = `<div class="message-content"><p>${content}</p></div>`;
+  }
+
+  chatHistory.appendChild(messageDiv);
+  chatHistory.scrollTop = chatHistory.scrollHeight;
+}
+

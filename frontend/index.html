@@ -14,6 +14,7 @@
       <a href="#" class="nav-link active" data-page="search">Search</a>
       <a href="#" class="nav-link" data-page="upload">Upload</a>
       <a href="#" class="nav-link" data-page="papers">My Papers</a>
+      <a href="#" class="nav-link" data-page="chat">AI Chat</a>
       <a href="#" class="nav-link" data-page="reports">Reports</a>
     </nav>
   </header>
@@ -95,6 +96,49 @@
       <section id="papers-list" class="papers-grid"></section>
     </section>
 
+    <!-- AI Chat Page -->
+    <section id="page-chat" class="page">
+      <div class="hero">
+        <h1>Research Assistant Chat</h1>
+        <p class="subtitle">
+          Ask questions about your uploaded papers. Answers are grounded in the paper text with page citations and evidence quotes.
+        </p>
+      </div>
+
+      <div class="chat-wrapper">
+        <div class="chat-controls-bar">
+          <div class="paper-select-group">
+            <label for="chat-paper-select">Target Paper:</label>
+            <select id="chat-paper-select">
+              <option value="all">All Uploaded Papers</option>
+            </select>
+          </div>
+          <button id="clear-chat-btn" class="secondary-btn small-btn">Clear Chat</button>
+        </div>
+
+        <div class="chat-suggestions">
+          <span class="suggestion-label">Suggested:</span>
+          <button class="chat-suggestion-chip" data-prompt="What is the core problem and research objective of this paper?">Problem & Objectives</button>
+          <button class="chat-suggestion-chip" data-prompt="What methodology and dataset are used in this paper?">Methodology</button>
+          <button class="chat-suggestion-chip" data-prompt="What are the key findings and main contributions?">Key Findings</button>
+          <button class="chat-suggestion-chip" data-prompt="What limitations or future work did the authors mention?">Limitations</button>
+        </div>
+
+        <div class="chatbot-container">
+          <div id="main-chat-history" class="chat-history"></div>
+          <div class="chat-input-container">
+            <input
+              type="text"
+              id="main-chat-input"
+              placeholder="Ask any question about this paper..."
+              autocomplete="off"
+            />
+            <button id="main-send-chat-btn" class="action-btn">Send</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Reports Page -->
     <section id="page-reports" class="page">
       <div class="hero">
@@ -116,6 +160,36 @@
         <div class="modal-actions">
           <button id="analyze-paper-btn" class="action-btn">Analyze Paper</button>
           <button id="view-chunks-btn" class="action-btn">View Chunks</button>
+          <button id="ask-question-btn" class="action-btn">Ask Question</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chunks Modal -->
+    <div id="chunks-modal" class="modal">
+      <div class="modal-content large">
+        <span class="close-modal">&times;</span>
+        <h2 id="chunks-title">Extracted Paper Chunks</h2>
+        <div id="chunks-body" class="chunks-container"></div>
+      </div>
+    </div>
+
+    <!-- Chatbot Modal -->
+    <div id="chatbot-modal" class="modal">
+      <div class="modal-content large">
+        <span class="close-modal">&times;</span>
+        <h2 id="chatbot-modal-title">Ask About This Paper</h2>
+        <div class="chatbot-container">
+          <div id="chat-history" class="chat-history"></div>
+          <div class="chat-input-container">
+            <input
+              type="text"
+              id="chat-input"
+              placeholder="Ask a question about this paper..."
+              autocomplete="off"
+            />
+            <button id="send-chat-btn" class="action-btn">Send</button>
+          </div>
         </div>
       </div>
     </div>
@@ -164,6 +238,6 @@
     <p>PaperSense — Final Year Project | Backend status: <span id="backend-status">checking...</span></p>
   </footer>
 
-  <script src="/static/js/script.js?v=3"></script>
+  <script src="/static/js/script.js?v=4"></script>
 </body>
 </html>
