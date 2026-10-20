@@ -6,6 +6,54 @@ let currentPaperId = null;
 let currentReportContent = null;
 let allUploadedPapers = [];
 
+// =============================================
+// Universal Toast Notification System
+// =============================================
+function showToast(message, type = "info", duration = 4000) {
+  let container = document.getElementById("toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toast-container";
+    container.className = "toast-container";
+    document.body.appendChild(container);
+  }
+
+  const icons = {
+    info: "ℹ️",
+    success: "✅",
+    warning: "⚠️",
+    error: "❌"
+  };
+
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `
+    <span class="toast-icon">${icons[type] || "ℹ️"}</span>
+    <span class="toast-message">${escapeHtml(message)}</span>
+    <button class="toast-close" title="Dismiss">&times;</button>
+  `;
+
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.classList.add("show");
+  });
+
+  const dismiss = () => {
+    toast.classList.remove("show");
+    toast.classList.add("hide");
+    setTimeout(() => {
+      if (toast.parentElement) toast.parentElement.removeChild(toast);
+    }, 300);
+  };
+
+  toast.querySelector(".toast-close").addEventListener("click", dismiss);
+
+  if (duration > 0) {
+    setTimeout(dismiss, duration);
+  }
+}
+
 // Navigation
 function setupNavigation() {
   const navLinks = document.querySelectorAll('.nav-link');
@@ -81,6 +129,7 @@ async function handleSearchSubmit(event) {
   statusLine.textContent = "Searching academic papers...";
   resultsEl.innerHTML = "";
   searchBtn.disabled = true;
+  showToast(`🔍 Searching papers for "${query}"...`, "info", 2500);
 
   try {
     let url = `${API_BASE}/api/search?query=${encodeURIComponent(query)}&sort_by=${sortBy}`;
@@ -96,6 +145,7 @@ async function handleSearchSubmit(event) {
     }
 
     statusLine.textContent = `Found ${data.total_results} papers for "${query}".`;
+    showToast(`✅ Found ${data.total_results} papers.`, "success");
 
     if (!data.papers || data.papers.length === 0) {
       resultsEl.innerHTML = "<p>No research papers found.</p>";
@@ -146,6 +196,7 @@ async function handleSearchSubmit(event) {
   } catch (error) {
     console.error(error);
     statusLine.textContent = "Search failed.";
+    showToast(`❌ Search failed: ${error.message}`, "error");
     const message = document.createElement("p");
     message.textContent = error.message || "Unable to retrieve research papers.";
     resultsEl.replaceChildren(message);
@@ -166,10 +217,12 @@ async function handleUploadSubmit(event) {
   const file = fileInput.files[0];
   if (!file) {
     statusLine.textContent = "Please select a PDF file.";
+    showToast("⚠️ Please select a PDF file first.", "warning");
     return;
   }
 
   statusLine.textContent = "Uploading and processing PDF...";
+  showToast(`📤 Uploading "${file.name}" & extracting chunks...`, "info", 5000);
   resultsEl.innerHTML = "";
   uploadBtn.disabled = true;
 
@@ -189,6 +242,7 @@ async function handleUploadSubmit(event) {
     }
 
     statusLine.textContent = `Upload successful: ${data.chunks_created} chunks extracted.`;
+    showToast(`✅ Paper "${data.title}" indexed (${data.chunks_created} chunks)!`, "success", 5000);
 
     const card = document.createElement("article");
     card.className = "paper-card";
@@ -203,6 +257,7 @@ async function handleUploadSubmit(event) {
   } catch (error) {
     console.error(error);
     statusLine.textContent = "Upload failed.";
+    showToast(`❌ Upload failed: ${error.message}`, "error", 5000);
     const message = document.createElement("p");
     message.textContent = error.message || "Unable to upload PDF.";
     resultsEl.replaceChildren(message);
@@ -290,12 +345,29 @@ function updateToolbarButtons() {
   const compareBtn = document.getElementById("compare-selected-btn");
   const gapsBtn = document.getElementById("detect-gaps-btn");
   const reportBtn = document.getElementById("generate-report-btn");
-  
+  const statusEl = document.getElementById("papers-toolbar-status");
+
   const count = selectedPapers.size;
-  
-  compareBtn.disabled = count < 2;
-  gapsBtn.disabled = count < 2;
-  reportBtn.disabled = count < 1;
+
+  // Keep buttons interactive so clicking them provides friendly guidance
+  compareBtn.removeAttribute("disabled");
+  gapsBtn.removeAttribute("disabled");
+  reportBtn.removeAttribute("disabled");
+
+  compareBtn.style.opacity = count < 2 ? "0.75" : "1";
+  gapsBtn.style.opacity = count < 2 ? "0.75" : "1";
+  reportBtn.style.opacity = count < 1 ? "0.75" : "1";
+
+  if (count === 0) {
+    statusEl.textContent = "☑️ Check papers below to compare findings, detect gaps, or generate reports.";
+    statusEl.className = "toolbar-status hint";
+  } else if (count === 1) {
+    statusEl.textContent = `✅ 1 paper selected — select 1 more to compare or detect research gaps.`;
+    statusEl.className = "toolbar-status hint";
+  } else {
+    statusEl.textContent = `✅ ${count} papers selected — all comparison tools ready.`;
+    statusEl.className = "toolbar-status success";
+  }
 }
 
 async function showPaperDetails(paperId) {
@@ -329,7 +401,7 @@ async function showPaperDetails(paperId) {
     
   } catch (error) {
     console.error(error);
-    alert("Failed to load paper details");
+    showToast("❌ Failed to load paper details: " + error.message, "error");
   }
 }
 
@@ -339,6 +411,7 @@ async function analyzePaper() {
   const analyzeBtn = document.getElementById("analyze-paper-btn");
   analyzeBtn.disabled = true;
   analyzeBtn.textContent = "Analyzing...";
+  showToast("🧠 Running AI analysis on paper...", "info", 3000);
   
   try {
     const response = await fetch(`${API_BASE}/api/analyze/${currentPaperId}`, {
@@ -352,10 +425,11 @@ async function analyzePaper() {
 
     displayAnalysis(data.analysis);
     document.getElementById("paper-modal").style.display = "none";
+    showToast("✅ Paper analysis completed successfully!", "success");
     
   } catch (error) {
     console.error(error);
-    alert("Analysis failed: " + error.message);
+    showToast("❌ Analysis failed: " + error.message, "error");
   } finally {
     analyzeBtn.disabled = false;
     analyzeBtn.textContent = "Analyze Paper";
@@ -409,32 +483,65 @@ function displayAnalysis(analysis) {
 }
 
 async function comparePapers() {
-  if (selectedPapers.size < 2) return;
-  
+  if (selectedPapers.size < 2) {
+    const msg = selectedPapers.size === 0
+      ? "⚠️ Please select at least 2 papers using the checkboxes below to compare."
+      : "⚠️ Please select at least 1 more paper to compare (2 required).";
+    showToast(msg, "warning");
+    showToolbarMessage(msg, "hint");
+    return;
+  }
+
   const btn = document.getElementById("compare-selected-btn");
+  const statusEl = document.getElementById("papers-toolbar-status");
   btn.disabled = true;
-  btn.textContent = "Comparing...";
-  
+  btn.textContent = "⏳ Comparing...";
+  showToast(`⚖️ Comparing ${selectedPapers.size} selected papers...`, "info");
+  statusEl.textContent = "🔄 Comparing selected papers — this may take a few seconds...";
+  statusEl.className = "toolbar-status working";
+
   try {
+    // Step 1: Ensure all selected papers are analyzed first
+    const paperIds = Array.from(selectedPapers);
+    statusEl.textContent = "🔄 Ensuring all papers are analyzed...";
+
+    for (const pid of paperIds) {
+      const paperData = await fetch(`${API_BASE}/api/papers/${pid}`).then(r => r.json());
+      if (!paperData.paper.analysis) {
+        statusEl.textContent = `🔄 Analyzing "${paperData.paper.title}" first...`;
+        showToast(`🧠 Pre-analyzing "${paperData.paper.title}"...`, "info", 2500);
+        const analyzeRes = await fetch(`${API_BASE}/api/analyze/${pid}`, { method: "POST" });
+        if (!analyzeRes.ok) {
+          const err = await analyzeRes.json();
+          throw new Error(`Analysis failed for "${paperData.paper.title}": ${err.detail}`);
+        }
+      }
+    }
+
+    // Step 2: Compare
+    statusEl.textContent = "🔄 Running multi-paper synthesis...";
     const response = await fetch(`${API_BASE}/api/compare`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(Array.from(selectedPapers))
+      body: JSON.stringify(paperIds)
     });
     const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.detail || "Comparison failed");
-    }
+    if (!response.ok) throw new Error(data.detail || "Comparison failed");
 
     displayComparison(data.comparison);
-    
+    statusEl.textContent = `✅ Comparison complete for ${paperIds.length} papers.`;
+    statusEl.className = "toolbar-status success";
+    showToast("✅ Multi-paper comparison generated successfully!", "success");
+
   } catch (error) {
     console.error(error);
-    alert("Comparison failed: " + error.message);
+    statusEl.textContent = `❌ ${error.message}`;
+    statusEl.className = "toolbar-status error";
+    showToast(`❌ Comparison failed: ${error.message}`, "error");
   } finally {
     btn.disabled = false;
-    btn.textContent = "Compare Selected";
+    btn.textContent = "⚖️ Compare Selected";
   }
 }
 
@@ -469,32 +576,63 @@ function displayComparison(comparison) {
 }
 
 async function detectResearchGaps() {
-  if (selectedPapers.size < 2) return;
-  
+  if (selectedPapers.size < 2) {
+    const msg = selectedPapers.size === 0
+      ? "⚠️ Please select at least 2 papers using the checkboxes below to detect research gaps."
+      : "⚠️ Please select at least 1 more paper to detect research gaps (2 required).";
+    showToast(msg, "warning");
+    showToolbarMessage(msg, "hint");
+    return;
+  }
+
   const btn = document.getElementById("detect-gaps-btn");
+  const statusEl = document.getElementById("papers-toolbar-status");
   btn.disabled = true;
-  btn.textContent = "Detecting gaps...";
-  
+  btn.textContent = "⏳ Detecting...";
+  showToast(`🔎 Detecting research gaps across ${selectedPapers.size} papers...`, "info");
+  statusEl.textContent = "🔄 Detecting research gaps — analyzing limitations and future work...";
+  statusEl.className = "toolbar-status working";
+
   try {
+    const paperIds = Array.from(selectedPapers);
+
+    // Ensure all papers are analyzed first
+    for (const pid of paperIds) {
+      const paperData = await fetch(`${API_BASE}/api/papers/${pid}`).then(r => r.json());
+      if (!paperData.paper.analysis) {
+        statusEl.textContent = `🔄 Analyzing "${paperData.paper.title}" first...`;
+        showToast(`🧠 Pre-analyzing "${paperData.paper.title}"...`, "info", 2500);
+        const analyzeRes = await fetch(`${API_BASE}/api/analyze/${pid}`, { method: "POST" });
+        if (!analyzeRes.ok) {
+          const err = await analyzeRes.json();
+          throw new Error(`Analysis failed for "${paperData.paper.title}": ${err.detail}`);
+        }
+      }
+    }
+
+    statusEl.textContent = "🔄 Identifying candidate research gaps...";
     const response = await fetch(`${API_BASE}/api/research-gaps`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(Array.from(selectedPapers))
+      body: JSON.stringify(paperIds)
     });
     const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.detail || "Gap detection failed");
-    }
+    if (!response.ok) throw new Error(data.detail || "Gap detection failed");
 
     displayResearchGaps(data.research_gaps);
-    
+    statusEl.textContent = `✅ Research gap analysis complete.`;
+    statusEl.className = "toolbar-status success";
+    showToast("✅ Candidate research gaps detected successfully!", "success");
+
   } catch (error) {
     console.error(error);
-    alert("Gap detection failed: " + error.message);
+    statusEl.textContent = `❌ ${error.message}`;
+    statusEl.className = "toolbar-status error";
+    showToast(`❌ Gap detection failed: ${error.message}`, "error");
   } finally {
     btn.disabled = false;
-    btn.textContent = "Detect Research Gaps";
+    btn.textContent = "🔎 Detect Research Gaps";
   }
 }
 
@@ -528,47 +666,109 @@ function displayResearchGaps(gaps) {
 }
 
 async function generateReport() {
-  if (selectedPapers.size < 1) return;
-  
-  const query = prompt("Enter research question for the report:");
-  if (!query) return;
-  
+  if (selectedPapers.size < 1) {
+    const msg = "⚠️ Please select at least 1 paper using the checkboxes below to generate a report.";
+    showToast(msg, "warning");
+    showToolbarMessage(msg, "hint");
+    return;
+  }
+
+  // Show inline query panel instead of prompt()
+  const panel = document.getElementById("report-query-panel");
+  panel.style.display = "block";
+  document.getElementById("report-query-input").focus();
+  showToast("📄 Enter your research question for the report below.", "info", 3000);
+}
+
+async function submitReport() {
+  const query = (document.getElementById("report-query-input").value || "").trim();
+  if (!query) {
+    showToolbarMessage("⚠️ Please enter a research question first.", "error");
+    showToast("⚠️ Please enter a research question first.", "warning");
+    return;
+  }
+
+  const panel = document.getElementById("report-query-panel");
+  panel.style.display = "none";
+
   const btn = document.getElementById("generate-report-btn");
+  const statusEl = document.getElementById("papers-toolbar-status");
   btn.disabled = true;
-  btn.textContent = "Generating...";
-  
+  btn.textContent = "⏳ Generating...";
+  showToast(`📄 Generating literature review for: "${query}"...`, "info");
+  statusEl.textContent = "🔄 Generating literature review report...";
+  statusEl.className = "toolbar-status working";
+
   try {
+    const paperIds = Array.from(selectedPapers);
+
+    // Ensure all papers are analyzed first
+    for (const pid of paperIds) {
+      const paperData = await fetch(`${API_BASE}/api/papers/${pid}`).then(r => r.json());
+      if (!paperData.paper.analysis) {
+        statusEl.textContent = `🔄 Analyzing "${paperData.paper.title}" first...`;
+        showToast(`🧠 Pre-analyzing "${paperData.paper.title}"...`, "info", 2500);
+        const analyzeRes = await fetch(`${API_BASE}/api/analyze/${pid}`, { method: "POST" });
+        if (!analyzeRes.ok) {
+          const err = await analyzeRes.json();
+          throw new Error(`Analysis failed for "${paperData.paper.title}": ${err.detail}`);
+        }
+      }
+    }
+
+    statusEl.textContent = "🔄 Compiling literature review...";
     const response = await fetch(`${API_BASE}/api/generate-report`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: query,
-        paper_ids: Array.from(selectedPapers)
-      })
+      body: JSON.stringify({ query, paper_ids: paperIds })
     });
     const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.detail || "Report generation failed");
-    }
+    if (!response.ok) throw new Error(data.detail || "Report generation failed");
 
     currentReportContent = data.report;
-    document.getElementById("report-title").textContent = data.report_id ? `Report #${data.report_id}` : "Literature Review Report";
-    document.getElementById("report-body").textContent = data.report;
+    document.getElementById("report-title").textContent =
+      data.report_id ? `Report #${data.report_id} — ${query}` : `Literature Review — ${query}`;
+    document.getElementById("report-body").innerHTML =
+      `<pre style="white-space:pre-wrap;font-size:0.92rem;line-height:1.7;">${escapeHtml(data.report)}</pre>`;
     document.getElementById("report-modal").style.display = "block";
-    
+
+    statusEl.textContent = `✅ Report generated successfully!`;
+    statusEl.className = "toolbar-status success";
+    showToast("✅ Literature review report generated successfully!", "success");
+    document.getElementById("report-query-input").value = "";
+
   } catch (error) {
     console.error(error);
-    alert("Report generation failed: " + error.message);
+    statusEl.textContent = `❌ ${error.message}`;
+    statusEl.className = "toolbar-status error";
+    showToast(`❌ Report generation failed: ${error.message}`, "error");
   } finally {
     btn.disabled = false;
-    btn.textContent = "Generate Report";
+    btn.textContent = "📄 Generate Report";
   }
+}
+
+function showToolbarMessage(msg, type) {
+  const statusEl = document.getElementById("papers-toolbar-status");
+  if (statusEl) {
+    statusEl.textContent = msg;
+    statusEl.className = `toolbar-status ${type}`;
+  }
+}
+
+function escapeHtml(str) {
+  return (str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function downloadReport() {
   if (!currentReportContent) return;
   
+  showToast("💾 Downloading report markdown file...", "info", 2500);
   const blob = new Blob([currentReportContent], { type: "text/markdown" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -614,11 +814,13 @@ async function loadReports() {
   } catch (error) {
     console.error(error);
     reportsList.innerHTML = "<p>Failed to load reports.</p>";
+    showToast("❌ Failed to load reports list", "error");
   }
 }
 
 async function viewReport(reportId) {
   try {
+    showToast("📄 Loading report...", "info", 2000);
     const response = await fetch(`${API_BASE}/api/reports/${reportId}`);
     const data = await response.json();
 
@@ -628,12 +830,14 @@ async function viewReport(reportId) {
 
     currentReportContent = data.report.report_content;
     document.getElementById("report-title").textContent = data.report.title;
-    document.getElementById("report-body").textContent = data.report.report_content;
+    document.getElementById("report-body").innerHTML =
+      `<pre style="white-space:pre-wrap;font-size:0.92rem;line-height:1.7;">${escapeHtml(data.report.report_content)}</pre>`;
     document.getElementById("report-modal").style.display = "block";
+    showToast("✅ Report loaded", "success", 2000);
     
   } catch (error) {
     console.error(error);
-    alert("Failed to load report");
+    showToast("❌ Failed to load report: " + error.message, "error");
   }
 }
 
@@ -667,6 +871,15 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("generate-report-btn").addEventListener("click", generateReport);
   document.getElementById("analyze-paper-btn").addEventListener("click", analyzePaper);
   document.getElementById("download-report-btn").addEventListener("click", downloadReport);
+
+  // Inline report query panel
+  document.getElementById("submit-report-btn").addEventListener("click", submitReport);
+  document.getElementById("cancel-report-btn").addEventListener("click", () => {
+    document.getElementById("report-query-panel").style.display = "none";
+  });
+  document.getElementById("report-query-input").addEventListener("keypress", (e) => {
+    if (e.key === "Enter") submitReport();
+  });
   
   // Paper modal actions
   document.getElementById("view-chunks-btn").addEventListener("click", () => viewPaperChunks(currentPaperId));
@@ -709,6 +922,7 @@ async function viewPaperChunks(paperId) {
   const modalTitle = document.getElementById("chunks-title");
   modalBody.innerHTML = "<p>Loading text chunks...</p>";
   document.getElementById("chunks-modal").style.display = "block";
+  showToast("📑 Loading extracted paper chunks...", "info", 2000);
 
   try {
     const res = await fetch(`${API_BASE}/api/papers/${paperId}`);
@@ -734,8 +948,10 @@ async function viewPaperChunks(paperId) {
       `;
       modalBody.appendChild(item);
     });
+    showToast(`✅ Loaded ${data.chunks.length} paper chunks`, "success", 2000);
   } catch (err) {
     modalBody.innerHTML = `<p style="color: #ef4444;">Error loading chunks: ${err.message || err}</p>`;
+    showToast(`❌ Failed to load chunks: ${err.message}`, "error");
   }
 }
 
@@ -952,8 +1168,13 @@ async function setupPeerReviewPage() {
     const paperId = document.getElementById("peer-review-paper-select").value;
     const statusEl = document.getElementById("peer-review-status");
     const resultsEl = document.getElementById("peer-review-results");
-    if (!paperId) { statusEl.textContent = "Please select a paper first."; return; }
+    if (!paperId) {
+      statusEl.textContent = "Please select a paper first.";
+      showToast("⚠️ Please select a paper to run peer review.", "warning");
+      return;
+    }
     statusEl.textContent = "Running peer review…";
+    showToast("🔍 Running adversarial peer review audit...", "info");
     btn.disabled = true;
     resultsEl.innerHTML = "";
     try {
@@ -961,9 +1182,11 @@ async function setupPeerReviewPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Peer review failed");
       statusEl.textContent = "Peer review complete.";
+      showToast(`✅ Peer review complete (Score: ${data.review.overall_score || "N/A"}/100)!`, "success");
       renderPeerReview(data.review, resultsEl);
     } catch (err) {
       statusEl.textContent = `Error: ${err.message}`;
+      showToast(`❌ Peer review failed: ${err.message}`, "error");
     } finally {
       btn.disabled = false;
     }
@@ -1007,8 +1230,13 @@ async function setupCitationsPage() {
     const paperId = document.getElementById("citations-paper-select").value;
     const statusEl = document.getElementById("citations-status");
     const resultsEl = document.getElementById("citations-results");
-    if (!paperId) { statusEl.textContent = "Please select a paper first."; return; }
+    if (!paperId) {
+      statusEl.textContent = "Please select a paper first.";
+      showToast("⚠️ Please select a paper to fetch citations.", "warning");
+      return;
+    }
     statusEl.textContent = "Fetching citation graph…";
+    showToast("📚 Querying Semantic Scholar citation consensus graph...", "info");
     btn.disabled = true;
     resultsEl.innerHTML = "";
     try {
@@ -1018,12 +1246,16 @@ async function setupCitationsPage() {
       const graph = data.citation_graph || {};
       if (graph.error) {
         statusEl.textContent = `Note: ${graph.error}`;
+        showToast(`ℹ️ ${graph.error}`, "warning", 5000);
       } else {
-        statusEl.textContent = `Found ${(graph.citations || []).length} related papers.`;
+        const count = (graph.citations || []).length;
+        statusEl.textContent = `Found ${count} related papers.`;
+        showToast(`✅ Found ${count} citation graph connections!`, "success");
       }
       renderCitations(graph, resultsEl);
     } catch (err) {
       statusEl.textContent = `Error: ${err.message}`;
+      showToast(`❌ Citation lookup failed: ${err.message}`, "error");
     } finally {
       btn.disabled = false;
     }
@@ -1067,9 +1299,18 @@ async function setupHypothesisPage() {
     const question = document.getElementById("hypothesis-question").value.trim();
     const statusEl = document.getElementById("hypothesis-status");
     const resultsEl = document.getElementById("hypothesis-results");
-    if (!paperId) { statusEl.textContent = "Please select a paper first."; return; }
-    if (!question) { statusEl.textContent = "Please enter a what-if question."; return; }
+    if (!paperId) {
+      statusEl.textContent = "Please select a paper first.";
+      showToast("⚠️ Please select a paper first.", "warning");
+      return;
+    }
+    if (!question) {
+      statusEl.textContent = "Please enter a what-if question.";
+      showToast("⚠️ Please enter a what-if question.", "warning");
+      return;
+    }
     statusEl.textContent = "Generating hypothesis…";
+    showToast("🔬 Generating grounded hypothesis & experiments...", "info");
     btn.disabled = true;
     resultsEl.innerHTML = "";
     try {
@@ -1081,9 +1322,11 @@ async function setupHypothesisPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Hypothesis generation failed");
       statusEl.textContent = "Hypothesis generated.";
+      showToast("✅ Scientific hypothesis generated successfully!", "success");
       renderHypothesis(data.result, resultsEl);
     } catch (err) {
       statusEl.textContent = `Error: ${err.message}`;
+      showToast(`❌ Hypothesis generation failed: ${err.message}`, "error");
     } finally {
       btn.disabled = false;
     }

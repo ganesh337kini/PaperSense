@@ -90,10 +90,22 @@
       </div>
 
       <div class="papers-toolbar">
-        <button id="refresh-papers-btn" class="secondary-btn">Refresh</button>
-        <button id="compare-selected-btn" class="secondary-btn" disabled>Compare Selected</button>
-        <button id="detect-gaps-btn" class="secondary-btn" disabled>Detect Research Gaps</button>
-        <button id="generate-report-btn" class="secondary-btn" disabled>Generate Report</button>
+        <button id="refresh-papers-btn" class="secondary-btn">🔄 Refresh</button>
+        <button id="compare-selected-btn" class="secondary-btn" disabled title="Select 2+ papers">⚖️ Compare Selected</button>
+        <button id="detect-gaps-btn" class="secondary-btn" disabled title="Select 2+ papers">🔎 Detect Research Gaps</button>
+        <button id="generate-report-btn" class="secondary-btn" disabled title="Select 1+ paper">📄 Generate Report</button>
+      </div>
+
+      <div id="papers-toolbar-status" class="toolbar-status"></div>
+
+      <!-- Inline report query input (shown when Generate Report is clicked) -->
+      <div id="report-query-panel" class="report-query-panel" style="display:none;">
+        <label for="report-query-input"><strong>Research question for the report:</strong></label>
+        <div class="report-query-row">
+          <input type="text" id="report-query-input" placeholder="e.g. Compare microservices scalability approaches" />
+          <button id="submit-report-btn" class="action-btn">Generate</button>
+          <button id="cancel-report-btn" class="secondary-btn">Cancel</button>
+        </div>
       </div>
 
       <section id="papers-list" class="papers-grid"></section>
@@ -296,6 +308,9 @@
     <p>PaperSense — Final Year Project | Backend status: <span id="backend-status">checking...</span></p>
   </footer>
 
-  <script src="/static/js/script.js?v=4"></script>
+  <!-- Toast notification container -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <script src="/static/js/script.js?v=5"></script>
 </body>
 </html>
