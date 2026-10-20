@@ -92,7 +92,11 @@ class EmbeddingService:
                 "chunk_id": chunk.get("chunk_id"),
                 "page_number": chunk.get("page_number"),
                 "section": chunk.get("section"),
-                "text": chunk["text"][:200]  # Store preview
+                "text": chunk["text"][:200],  # Store preview
+                "bbox_x0": chunk.get("bbox_x0"),
+                "bbox_y0": chunk.get("bbox_y0"),
+                "bbox_x1": chunk.get("bbox_x1"),
+                "bbox_y1": chunk.get("bbox_y1"),
             })
         
         return embedding_refs

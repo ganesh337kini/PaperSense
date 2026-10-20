@@ -1,12 +1,10 @@
 """
 paper_chunk.py
-PaperChunks table — each row is one chunk of text from a paper (e.g. one
-paragraph of the Methodology section). `embedding_reference` will store the
-FAISS index ID once embeddings are added (Phase 11-12) — the actual vector
-lives in FAISS, not in Postgres; this column just links the two.
+PaperChunks table — each row is one chunk of text from a paper.
+Includes layout-aware bounding box coordinates extracted via PyMuPDF.
 """
 
-from sqlalchemy import Column, Integer, String, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Float, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -22,5 +20,17 @@ class PaperChunk(Base):
     chunk_index = Column(Integer, nullable=True)    # order within the paper
     page_number = Column(Integer, nullable=True)   # page number in PDF
     embedding_reference = Column(String(100), nullable=True)  # FAISS vector id
+
+    # Layout-aware bounding box coordinates (PDF points, origin top-left)
+    bbox_x0 = Column(Float, nullable=True)
+    bbox_y0 = Column(Float, nullable=True)
+    bbox_x1 = Column(Float, nullable=True)
+    bbox_y1 = Column(Float, nullable=True)
+
+    # Block type: text | equation | table | figure
+    block_type = Column(String(50), nullable=True, default="text")
+
+    # Vision-LLM generated description for figure blocks
+    figure_description = Column(Text, nullable=True)
 
     paper = relationship("Paper", back_populates="chunks")

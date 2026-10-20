@@ -23,7 +23,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy import text, inspect
 from sqlalchemy.orm import Session
-
 from app.config import settings
 from app.database import Base, engine, get_db
 from app.api.search import router as search_router
@@ -53,6 +52,26 @@ app.include_router(analysis_router, prefix="/api", tags=["analysis"])
 # tool (Alembic) would replace this in a production setup, but for a
 # final-year project this keeps things simple and transparent.
 Base.metadata.create_all(bind=engine)
+
+# ---- Pillar 1 & 4: SQLite startup migration — add new columns if absent ----
+def _run_migrations():
+    """Add new bbox/block_type/figure_description columns to paper_chunks if they don't exist."""
+    with engine.connect() as conn:
+        for col_def in [
+            "ALTER TABLE paper_chunks ADD COLUMN bbox_x0 REAL",
+            "ALTER TABLE paper_chunks ADD COLUMN bbox_y0 REAL",
+            "ALTER TABLE paper_chunks ADD COLUMN bbox_x1 REAL",
+            "ALTER TABLE paper_chunks ADD COLUMN bbox_y1 REAL",
+            "ALTER TABLE paper_chunks ADD COLUMN block_type VARCHAR(50) DEFAULT 'text'",
+            "ALTER TABLE paper_chunks ADD COLUMN figure_description TEXT",
+        ]:
+            try:
+                conn.execute(text(col_def))
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
+
+_run_migrations()
 
 # Allow the frontend to call this API without CORS errors
 app.add_middleware(

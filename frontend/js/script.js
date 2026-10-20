@@ -40,6 +40,12 @@ function navigateTo(page) {
     loadReports();
   } else if (page === 'chat') {
     setupChatPage();
+  } else if (page === 'peer-review') {
+    setupPeerReviewPage();
+  } else if (page === 'citations') {
+    setupCitationsPage();
+  } else if (page === 'hypothesis') {
+    setupHypothesisPage();
   }
 }
 
@@ -933,3 +939,197 @@ function renderChatMessage(role, content, containerId = "chat-history") {
   chatHistory.scrollTop = chatHistory.scrollHeight;
 }
 
+
+// =============================================
+// Pillar 2: Peer Review Page
+// =============================================
+async function setupPeerReviewPage() {
+  await populatePaperSelect("peer-review-paper-select");
+  const btn = document.getElementById("run-peer-review-btn");
+  if (btn._peerReviewBound) return;
+  btn._peerReviewBound = true;
+  btn.addEventListener("click", async () => {
+    const paperId = document.getElementById("peer-review-paper-select").value;
+    const statusEl = document.getElementById("peer-review-status");
+    const resultsEl = document.getElementById("peer-review-results");
+    if (!paperId) { statusEl.textContent = "Please select a paper first."; return; }
+    statusEl.textContent = "Running peer review…";
+    btn.disabled = true;
+    resultsEl.innerHTML = "";
+    try {
+      const res = await fetch(`${API_BASE}/api/peer-review/${paperId}`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Peer review failed");
+      statusEl.textContent = "Peer review complete.";
+      renderPeerReview(data.review, resultsEl);
+    } catch (err) {
+      statusEl.textContent = `Error: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+function renderPeerReview(review, container) {
+  const score = review.overall_score ?? "N/A";
+  let html = `
+    <div class="review-summary-row">
+      <div class="overall-score">${score}<span class="score-label">/100</span></div>
+      <div class="review-summary-text">${review.summary || ""}</div>
+    </div>
+    <h3 style="color:var(--text-dim);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:12px;">Findings</h3>
+  `;
+  (review.findings || []).forEach(f => {
+    const severity = (f.severity || "info").toLowerCase();
+    html += `
+      <div class="finding-card ${severity}">
+        <div class="finding-header">
+          <span class="severity-badge">${f.severity || "info"}</span>
+          <span class="category-label">${(f.category || "").replace(/_/g, " ")}</span>
+        </div>
+        <p class="finding-desc">${f.description || ""}</p>
+        ${f.evidence_text ? `<p class="finding-evidence">"${f.evidence_text}"</p>` : ""}
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+}
+
+// =============================================
+// Pillar 3: Citations Page
+// =============================================
+async function setupCitationsPage() {
+  await populatePaperSelect("citations-paper-select");
+  const btn = document.getElementById("fetch-citations-btn");
+  if (btn._citationsBound) return;
+  btn._citationsBound = true;
+  btn.addEventListener("click", async () => {
+    const paperId = document.getElementById("citations-paper-select").value;
+    const statusEl = document.getElementById("citations-status");
+    const resultsEl = document.getElementById("citations-results");
+    if (!paperId) { statusEl.textContent = "Please select a paper first."; return; }
+    statusEl.textContent = "Fetching citation graph…";
+    btn.disabled = true;
+    resultsEl.innerHTML = "";
+    try {
+      const res = await fetch(`${API_BASE}/api/citations/${paperId}`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Citation fetch failed");
+      const graph = data.citation_graph || {};
+      if (graph.error) {
+        statusEl.textContent = `Note: ${graph.error}`;
+      } else {
+        statusEl.textContent = `Found ${(graph.citations || []).length} related papers.`;
+      }
+      renderCitations(graph, resultsEl);
+    } catch (err) {
+      statusEl.textContent = `Error: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+function renderCitations(graph, container) {
+  const citations = graph.citations || [];
+  if (!citations.length) {
+    container.innerHTML = "<p style='color:var(--text-dim)'>No citations found. This may require network access to Semantic Scholar.</p>";
+    return;
+  }
+  let html = `<h3 style="color:var(--text-dim);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:12px;">Related Papers</h3>`;
+  citations.forEach(c => {
+    const rel = (c.relationship || "UNRELATED").toUpperCase();
+    const authors = (c.authors || []).slice(0, 3).join(", ");
+    html += `
+      <div class="citation-card">
+        <div class="citation-info">
+          <div class="citation-title">${c.title || "Untitled"}</div>
+          <div class="citation-meta">${authors ? authors + " • " : ""}${c.year || ""}</div>
+          ${c.abstract ? `<div class="citation-meta" style="margin-top:4px">${c.abstract}</div>` : ""}
+        </div>
+        <span class="relationship-badge ${rel}">${rel}</span>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+}
+
+// =============================================
+// Pillar 5: Hypothesis Page
+// =============================================
+async function setupHypothesisPage() {
+  await populatePaperSelect("hypothesis-paper-select");
+  const btn = document.getElementById("generate-hypothesis-btn");
+  if (btn._hypothesisBound) return;
+  btn._hypothesisBound = true;
+  btn.addEventListener("click", async () => {
+    const paperId = document.getElementById("hypothesis-paper-select").value;
+    const question = document.getElementById("hypothesis-question").value.trim();
+    const statusEl = document.getElementById("hypothesis-status");
+    const resultsEl = document.getElementById("hypothesis-results");
+    if (!paperId) { statusEl.textContent = "Please select a paper first."; return; }
+    if (!question) { statusEl.textContent = "Please enter a what-if question."; return; }
+    statusEl.textContent = "Generating hypothesis…";
+    btn.disabled = true;
+    resultsEl.innerHTML = "";
+    try {
+      const res = await fetch(`${API_BASE}/api/hypothesis`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paper_id: parseInt(paperId), question })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Hypothesis generation failed");
+      statusEl.textContent = "Hypothesis generated.";
+      renderHypothesis(data.result, resultsEl);
+    } catch (err) {
+      statusEl.textContent = `Error: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+function renderHypothesis(result, container) {
+  if (!result) { container.innerHTML = "<p>No result returned.</p>"; return; }
+
+  const outcomesList = (result.predicted_outcomes || []).map(o => `<li>${o}</li>`).join("");
+  const experimentsList = (result.suggested_experiments || []).map(e => `<li>${e}</li>`).join("");
+  const sectionsList = (result.relevant_sections || [])
+    .map(s => `<li><em>"${s.text}"</em>${s.page ? ` — Page ${s.page}` : ""}</li>`).join("");
+
+  container.innerHTML = `
+    <div class="hypothesis-result">
+      <h3>Hypothesis</h3>
+      <p class="hypothesis-text">${result.hypothesis || ""}</p>
+    </div>
+    ${result.confidence ? `<span class="confidence-badge">Confidence: ${result.confidence}</span>` : ""}
+    ${outcomesList ? `<div class="hypothesis-result"><h3>Predicted Outcomes</h3><ul>${outcomesList}</ul></div>` : ""}
+    ${experimentsList ? `<div class="hypothesis-result"><h3>Suggested Experiments</h3><ul>${experimentsList}</ul></div>` : ""}
+    ${sectionsList ? `<div class="hypothesis-result"><h3>Relevant Sections</h3><ul>${sectionsList}</ul></div>` : ""}
+    ${result.limitations ? `<div class="hypothesis-result"><h3>Limitations</h3><p class="hypothesis-text">${result.limitations}</p></div>` : ""}
+  `;
+}
+
+// =============================================
+// Helper: populate a paper <select> by ID
+// =============================================
+async function populatePaperSelect(selectId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/papers`);
+    const data = await res.json();
+    const papers = (data.papers || []).filter(p => p.processing_status === "completed");
+    // Keep the default option, replace the rest
+    sel.innerHTML = '<option value="">-- Select a paper --</option>';
+    papers.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.title || p.file_name;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    // Silently fail — list may be empty
+  }
+}

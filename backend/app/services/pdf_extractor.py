@@ -5,7 +5,7 @@ Extracts text with page numbers and detects image-only PDFs.
 """
 
 import pymupdf as fitz
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from pathlib import Path
 
 
@@ -68,6 +68,11 @@ class PDFExtractor:
         finally:
             if self.doc:
                 self.doc.close()
+
+    def extract_with_layout(self) -> List[Dict]:
+        """Delegate to LayoutParser for layout-aware extraction with bounding boxes."""
+        from app.services.layout_parser import LayoutParser
+        return LayoutParser().extract_with_layout(self.file_path)
     
     def get_metadata(self) -> dict:
         """Extract basic PDF metadata."""
@@ -86,3 +91,8 @@ class PDFExtractor:
         finally:
             if self.doc:
                 self.doc.close()
+
+    def extract_with_layout(self) -> List[Dict]:
+        """Delegate to LayoutParser for layout-aware extraction with bounding boxes."""
+        from app.services.layout_parser import LayoutParser
+        return LayoutParser().extract_with_layout(self.file_path)

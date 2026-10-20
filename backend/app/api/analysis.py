@@ -18,10 +18,16 @@ from app.models.report import Report
 from app.services.llm_service import LLMService
 from app.services.report_service import ReportService
 from app.services.embedding_service import embedding_service
+from app.services.peer_review_agent import PeerReviewAgent
+from app.services.citation_service import CitationService
+from app.services.hypothesis_agent import HypothesisAgent
 
 router = APIRouter()
 llm_service = LLMService()
 report_service = ReportService()
+peer_review_agent = PeerReviewAgent()
+citation_service = CitationService()
+hypothesis_agent = HypothesisAgent()
 
 
 class AskQuestionRequest(BaseModel):
@@ -38,6 +44,11 @@ class SemanticSearchRequest(BaseModel):
 class GenerateReportRequest(BaseModel):
     query: str
     paper_ids: List[int]
+
+
+class HypothesisRequest(BaseModel):
+    paper_id: int
+    question: str
 
 
 @router.post("/analyze/{paper_id}")
@@ -224,7 +235,11 @@ def ask_question(
                 ranked_chunks.append({
                     "text": c.text,
                     "page_number": c.page_number,
-                    "section": c.section
+                    "section": c.section,
+                    "bbox_x0": c.bbox_x0,
+                    "bbox_y0": c.bbox_y0,
+                    "bbox_x1": c.bbox_x1,
+                    "bbox_y1": c.bbox_y1,
                 })
 
         # Append additional chunks if needed
@@ -234,7 +249,11 @@ def ask_question(
                     ranked_chunks.append({
                         "text": c.text,
                         "page_number": c.page_number,
-                        "section": c.section
+                        "section": c.section,
+                        "bbox_x0": c.bbox_x0,
+                        "bbox_y0": c.bbox_y0,
+                        "bbox_x1": c.bbox_x1,
+                        "bbox_y1": c.bbox_y1,
                     })
                     seen_indices.add(c.chunk_index)
                     if len(ranked_chunks) >= 6:
@@ -453,3 +472,93 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
             "created_at": report.created_at.isoformat()
         }
     }
+
+
+
+# ---- Pillar 2: Peer Review ----
+
+@router.post("/peer-review/{paper_id}")
+def run_peer_review(paper_id: int, db: Session = Depends(get_db)):
+    """Run an adversarial peer review on a paper."""
+    paper = db.query(Paper).filter(Paper.id == paper_id).first()
+    if not paper:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    if paper.processing_status != "completed":
+        raise HTTPException(status_code=400, detail="Paper not ready")
+    chunks = db.query(PaperChunk).filter(PaperChunk.paper_id == paper_id).all()
+    chunks_data = [
+        {"text": c.text, "page_number": c.page_number, "section": c.section}
+        for c in chunks
+    ]
+    try:
+        review = peer_review_agent.run_peer_review(paper.title, chunks_data)
+        return {
+            "status": "success",
+            "paper_id": paper_id,
+            "paper_title": paper.title,
+            "review": review,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Peer review failed: {str(e)}")
+
+
+# ---- Pillar 3: Citation Graph ----
+
+@router.post("/citations/{paper_id}")
+def get_citation_graph(paper_id: int, db: Session = Depends(get_db)):
+    """Build a semantic citation graph for a paper."""
+    paper = db.query(Paper).filter(Paper.id == paper_id).first()
+    if not paper:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    abstract = ""
+    if paper.analysis:
+        import json as _json
+        try:
+            a = _json.loads(paper.analysis)
+            abstract = a.get("research_problem", "") + " " + a.get("key_findings", "")
+        except Exception:
+            pass
+    try:
+        client = llm_service.client if not llm_service.mock_mode else None
+        graph = citation_service.build_citation_graph(paper.title, abstract, client)
+        return {"status": "success", "paper_id": paper_id, "citation_graph": graph}
+    except Exception as e:
+        return {
+            "status": "partial",
+            "paper_id": paper_id,
+            "citation_graph": {
+                "citations": [],
+                "graph_edges": [],
+                "error": str(e),
+            },
+        }
+
+
+# ---- Pillar 5: Hypothesis Generation ----
+
+@router.post("/hypothesis")
+def generate_hypothesis(req: HypothesisRequest, db: Session = Depends(get_db)):
+    """Generate a scientific hypothesis based on a what-if question about a paper."""
+    paper = db.query(Paper).filter(Paper.id == req.paper_id).first()
+    if not paper:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    if paper.processing_status != "completed":
+        raise HTTPException(status_code=400, detail="Paper not ready")
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+    chunks = db.query(PaperChunk).filter(PaperChunk.paper_id == req.paper_id).all()
+    chunks_data = [
+        {"text": c.text, "page_number": c.page_number, "section": c.section}
+        for c in chunks
+    ]
+    try:
+        result = hypothesis_agent.generate_hypothesis(paper.title, chunks_data, req.question)
+        return {
+            "status": "success",
+            "paper_id": req.paper_id,
+            "paper_title": paper.title,
+            "question": req.question,
+            "result": result,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Hypothesis generation failed: {str(e)}")

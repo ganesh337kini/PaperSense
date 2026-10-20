@@ -4,6 +4,7 @@ API endpoints for PDF upload and processing.
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pathlib import Path
 import shutil
@@ -109,6 +110,32 @@ async def upload_pdf(
         
         db.commit()
         db.refresh(paper)
+        
+        # --- Pillar 1: Layout-aware bbox enrichment ---
+        try:
+            from app.services.layout_parser import LayoutParser
+            layout_chunks = LayoutParser().extract_with_layout(str(file_path))
+            # Build a lookup: page_number -> list of layout blocks
+            page_to_blocks: dict = {}
+            for lb in layout_chunks:
+                pg = lb.get("page_number", 1)
+                page_to_blocks.setdefault(pg, []).append(lb)
+
+            saved_chunks = db.query(PaperChunk).filter(PaperChunk.paper_id == paper.id).all()
+            for chunk in saved_chunks:
+                pg = chunk.page_number or 1
+                blocks = page_to_blocks.get(pg, [])
+                idx = chunk.chunk_index or 0
+                if blocks:
+                    block = blocks[idx % len(blocks)]
+                    chunk.bbox_x0 = block.get("bbox_x0")
+                    chunk.bbox_y0 = block.get("bbox_y0")
+                    chunk.bbox_x1 = block.get("bbox_x1")
+                    chunk.bbox_y1 = block.get("bbox_y1")
+                    chunk.block_type = block.get("block_type", "text")
+            db.commit()
+        except Exception:
+            pass  # Layout enrichment is best-effort
         
         # Generate embeddings
         embedding_service.load_index() or embedding_service.create_index()
@@ -237,3 +264,19 @@ def delete_paper(paper_id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return {"status": "success", "message": "Paper deleted successfully"}
+
+
+
+@router.get("/papers/{paper_id}/pdf")
+def serve_paper_pdf(paper_id: int, db: Session = Depends(get_db)):
+    """Serve the raw PDF file for a paper."""
+    paper = db.query(Paper).filter(Paper.id == paper_id).first()
+    if not paper:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    if not paper.file_path or not Path(paper.file_path).exists():
+        raise HTTPException(status_code=404, detail="PDF file not found")
+    return FileResponse(
+        paper.file_path,
+        media_type="application/pdf",
+        filename=paper.file_name or f"paper_{paper_id}.pdf"
+    )

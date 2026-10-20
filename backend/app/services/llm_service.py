@@ -438,7 +438,14 @@ Return a JSON object with the following structure:
                 evidence_list.append({
                     "text": quote,
                     "page": c.get("page_number", 1),
-                    "relevance": f"Found on page {c.get('page_number', 1)} addressing the query"
+                    "relevance": f"Found on page {c.get('page_number', 1)} addressing the query",
+                    "bbox": {
+                        "x0": c.get("bbox_x0"),
+                        "y0": c.get("bbox_y0"),
+                        "x1": c.get("bbox_x1"),
+                        "y1": c.get("bbox_y1"),
+                        "page": c.get("page_number", 1),
+                    }
                 })
 
         # Synthesize a clean, readable answer from the top text

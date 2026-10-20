@@ -16,6 +16,9 @@
       <a href="#" class="nav-link" data-page="papers">My Papers</a>
       <a href="#" class="nav-link" data-page="chat">AI Chat</a>
       <a href="#" class="nav-link" data-page="reports">Reports</a>
+      <a href="#" class="nav-link" data-page="peer-review">🔍 Peer Review</a>
+      <a href="#" class="nav-link" data-page="citations">📚 Citations</a>
+      <a href="#" class="nav-link" data-page="hypothesis">🔬 Hypothesis</a>
     </nav>
   </header>
 
@@ -232,6 +235,61 @@
         <div id="report-body"></div>
       </div>
     </div>
+
+    <!-- Peer Review Page -->
+    <section id="page-peer-review" class="page">
+      <div class="hero">
+        <h1>🔍 Adversarial Peer Review</h1>
+        <p class="subtitle">AI-powered critical peer review that identifies weaknesses, missing baselines, and potential data leakage.</p>
+      </div>
+      <div class="tool-panel">
+        <div class="form-row">
+          <label for="peer-review-paper-select">Select Paper:</label>
+          <select id="peer-review-paper-select"><option value="">-- Select a paper --</option></select>
+          <button id="run-peer-review-btn" class="action-btn">Run Peer Review</button>
+        </div>
+        <p id="peer-review-status" class="status-line"></p>
+      </div>
+      <div id="peer-review-results"></div>
+    </section>
+
+    <!-- Citations Page -->
+    <section id="page-citations" class="page">
+      <div class="hero">
+        <h1>📚 Citation &amp; Agreement Graph</h1>
+        <p class="subtitle">Discover related papers and classify their relationship as SUPPORTS, CONTRADICTS, EXTENDS, or UNRELATED.</p>
+      </div>
+      <div class="tool-panel">
+        <div class="form-row">
+          <label for="citations-paper-select">Select Paper:</label>
+          <select id="citations-paper-select"><option value="">-- Select a paper --</option></select>
+          <button id="fetch-citations-btn" class="action-btn">Fetch Citation Graph</button>
+        </div>
+        <p id="citations-status" class="status-line">Note: Requires network access to Semantic Scholar.</p>
+      </div>
+      <div id="citations-results"></div>
+    </section>
+
+    <!-- Hypothesis Page -->
+    <section id="page-hypothesis" class="page">
+      <div class="hero">
+        <h1>🔬 Hypothesis Generator</h1>
+        <p class="subtitle">Ask "what if" questions about a paper and get AI-generated scientific hypotheses, predicted outcomes, and suggested experiments.</p>
+      </div>
+      <div class="tool-panel">
+        <div class="form-row">
+          <label for="hypothesis-paper-select">Select Paper:</label>
+          <select id="hypothesis-paper-select"><option value="">-- Select a paper --</option></select>
+        </div>
+        <div class="form-row">
+          <label for="hypothesis-question">What-If Question:</label>
+          <textarea id="hypothesis-question" rows="3" placeholder="e.g. What if the dataset size was doubled? What if a transformer was used instead of LSTM?"></textarea>
+        </div>
+        <button id="generate-hypothesis-btn" class="action-btn">Generate Hypothesis</button>
+        <p id="hypothesis-status" class="status-line"></p>
+      </div>
+      <div id="hypothesis-results"></div>
+    </section>
   </main>
 
   <footer class="footer">
